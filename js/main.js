@@ -7,6 +7,14 @@ const frame = $('frame'), band = $('band'), canvas = $('game');
 R.ctx = canvas.getContext('2d', { alpha: false });
 let sim = Z.create(), mode = 'title', isTouch = matchMedia('(pointer:coarse)').matches, clearT = 0;
 
+// ---- drawing resolution: the canvas never holds more than this many pixels (x1.6 with a mouse). Every full-screen pass
+// (bloom, grain, the shader) costs in proportion, so this is the one setting that makes everything lighter at once.
+const QUAL = [{ name: '高', px: 1.6e6 }, { name: '標準', px: 1.0e6 }, { name: '軽量', px: 0.6e6 }];
+let qual = isTouch ? 1 : 0, qualAuto = false, slow = 0, playFps = 0;
+try { const v = localStorage.getItem('zanko.qual'); if (v !== null && QUAL[+v]) qual = +v; } catch (_) {}
+function qualLabel() { $('qualBtn').textContent = '描画の解像度：' + QUAL[qual].name + (qualAuto ? '（自動で下げた）' : '') + '　' + canvas.width + '×' + canvas.height + (playFps ? '・' + playFps + 'fps' : ''); }
+function setQual(q, auto) { qual = q; qualAuto = !!auto; slow = 0; if (!auto) try { localStorage.setItem('zanko.qual', String(q)); } catch (_) {} layout(); qualLabel(); }
+
 // ---- layout: the view is 204 to 240 world rows tall (closer on short screens); its width follows the window ----
 function layout() {
   const fw = frame.clientWidth, fh = frame.clientHeight; if (!fw || !fh) return;
@@ -16,7 +24,7 @@ function layout() {
   let vw = vh * bw / bh; if (vw > 640) { vw = 640; bw = Math.round(bh * vw / vh); }
   frame.classList.toggle('band-mode', bandMode); frame.style.setProperty('--band-h', bh + 'px');
   band.style.left = Math.round((fw - bw) / 2) + 'px'; band.style.width = bw + 'px'; band.style.height = bh + 'px';
-  let pr = Math.min(window.devicePixelRatio || 1, 3); const maxPixels = isTouch ? 1.6e6 : 2.6e6;
+  let pr = Math.min(window.devicePixelRatio || 1, 3); const maxPixels = QUAL[qual].px * (isTouch ? 1 : 1.6);
   if (bw * bh * pr * pr > maxPixels) pr = Math.sqrt(maxPixels / (bw * bh));
   canvas.width = Math.round(bw * pr); canvas.height = Math.round(bh * pr);
   R.VW = vw; R.VH = vh; R.css = bh / vh; R.K = canvas.height / vh;
@@ -131,7 +139,7 @@ function setMode(m) {
   for (const id of ['title', 'pause', 'clear']) $(id).classList.toggle('show', id === m);
   $('talk').classList.toggle('show', m === 'talk'); if (m !== 'play') promptEl.classList.remove('show');
   if (m !== 'play') releaseAll(); else { last = 0; acc = 0; measureButtons(); }
-  AU.setPlay(m === 'play' || m === 'talk');
+  AU.setPlay(m === 'play' || m === 'talk'); slow = 0; if (m === 'pause') qualLabel();
 }
 function fullscreenEl() { return document.fullscreenElement || document.webkitFullscreenElement; }
 function toggleFullscreen() { try { if (fullscreenEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; } const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen; if (!fn) return; const r = fn.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (_) {} }
@@ -145,6 +153,7 @@ $('retryBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('againBtn').addEventListener('click', () => { restart(); setMode('play'); });
 for (const k of ['bgm', 'se']) { const el = $(k + 'Vol'), out = $(k + 'VolV'); el.value = AU.vol[k]; out.textContent = AU.vol[k]; el.addEventListener('input', () => { AU.setVol(k, el.value); out.textContent = el.value; }); }
 $('boxBtn').addEventListener('click', toggleBoxes);
+$('qualBtn').addEventListener('click', () => setQual((qual + 1) % QUAL.length, false));
 $('gradeBtn').addEventListener('click', () => { R.grade = !R.grade; $('gradeBtn').textContent = '色調整（LUT・トーン）：' + (R.grade ? 'ON' : 'OFF'); });
 $('postBtn').addEventListener('click', () => { R.post = !R.post; $('postBtn').textContent = 'シェーダー効果（歪み・ブレ・色ずれ）：' + (R.post ? 'ON' : 'OFF'); });
 $('fxBtn').addEventListener('click', () => { R.fx = !R.fx; $('fxBtn').textContent = '空気感：' + (R.fx ? 'ON' : 'OFF'); });
@@ -222,6 +231,8 @@ function tick(ts) {
   if (mode === 'talk') talkTick();
   R.draw(sim); hud(); placePrompt();
   fpsN++; if (ts - fpsAt > 500) { fps = Math.round(fpsN * 1000 / (ts - fpsAt)); fpsN = 0; fpsAt = ts;
+    // touch devices: 3 seconds under 48 fps while playing -> one step down in resolution (never back up by itself; the menu shows it and can undo it)
+    if (mode === 'play') { playFps = fps; slow = fps < 48 ? slow + 1 : 0; if (isTouch && slow >= 6 && qual < QUAL.length - 1) setQual(qual + 1, true); }
     if (!$('debug').hidden) { const p = sim.p; $('debug').textContent = fps + ' fps  view ' + Math.round(R.VW) + 'x' + Math.round(R.VH) + '  canvas ' + canvas.width + 'x' + canvas.height + '\n' + (R.pose ? R.pose.kind : '-') + '  x ' + p.x.toFixed(1) + '  y ' + p.y.toFixed(1) + '  vx ' + p.vx.toFixed(2) + '  vy ' + p.vy.toFixed(2) + '\ndash ' + p.dashT + '  airFast ' + p.airFast + '  wall ' + p.wall + '  atk ' + (p.atk ? p.atk.id + ':' + p.atk.f : '-') + '  charge ' + p.charge; } }
 }
 document.body.classList.toggle('touch', isTouch);
