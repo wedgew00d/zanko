@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#070b14">
+<title>残光 ZANKO（仮）</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="frame" id="frame" data-mode="title">
+ <div class="band" id="band">
+  <canvas id="game" width="960" height="540" aria-label="横スクロールの剣戟アクション"></canvas>
+  <div class="hud" id="hud">
+   <div class="life"><span class="tag">LIFE</span><div class="cells" id="cells"></div></div>
+   <div class="hud-right">
+    <div class="timer"><span class="tag">TIME</span><b id="time">0:00.0</b><span class="tag miss">MISS <i id="deaths">0</i></span></div>
+    <button class="icon-btn" id="pauseBtn" type="button" aria-label="メニュー"><span></span><span></span></button>
+   </div>
+  </div>
+  <button class="prompt" id="prompt" type="button"><span class="key"><span class="k-key">E</span><span class="k-tap">TAP</span></span><b id="promptText">調べる</b></button>
+  <div class="debug" id="debug" hidden></div>
+ </div>
+
+ <div class="talk" id="talk"><div class="talk-title" id="talkTitle"></div><p id="talkText"></p><div class="talk-more" id="talkMore">▼ 次へ</div></div>
+
+ <div class="touch-ui" id="touchUI" aria-hidden="true">
+  <div class="stick" id="stick"><i class="chev l"></i><i class="chev r"></i><div class="stick-knob" id="stickKnob"></div></div>
+  <div class="tbtn dash" data-act="dash"><span>DASH</span></div>
+  <div class="tbtn attack" data-act="attack"><span>斬</span></div>
+  <div class="tbtn jump" data-act="jump"><span>JUMP</span></div>
+ </div>
+
+ <div class="overlay show" id="title">
+  <div class="panel wide">
+   <div class="micro">ACTION PROTOTYPE / 仮題 / v0.1.0</div>
+   <h1>残光 <small>ZANKO</small></h1>
+   <p class="lead">ダッシュ、壁蹴り、三段斬り。操作の手触りを確かめるための練習ステージ。</p>
+   <table class="keys for-key">
+    <tr><th>おすすめ</th><td colspan="3"><kbd>A</kbd><kbd>D</kbd> 移動（同じ方向を2度押しでダッシュ。押している間は走り続ける）<br><kbd>マウス左</kbd> 斬る　<kbd>マウス右</kbd> ジャンプ、空中でもう一度押すとエアダッシュ　<kbd>Space</kbd> ジャンプ</td></tr>
+    <tr><th>キーのみ</th><td colspan="3"><kbd>A</kbd><kbd>D</kbd> ＋ <kbd>J</kbd> 斬る <kbd>K</kbd> ジャンプ <kbd>L</kbd> ダッシュ　／　<kbd>←</kbd><kbd>→</kbd> ＋ <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd></td></tr>
+    <tr><th>ほか</th><td colspan="3"><kbd>E</kbd>（<kbd>W</kbd> <kbd>↑</kbd> でも）調べる・動かす　斬るは長押しで溜め　<kbd>Esc</kbd> メニュー　<kbd>F3</kbd> 数値　<kbd>H</kbd> 当たり判定</td></tr>
+   </table>
+   <ul class="keys for-touch">
+    <li>画面左をドラッグ：移動</li><li>斬：連打で三段、長押しして離すと溜め斬り</li><li>DASH：1回押すと最後まで走る。押し続けると連続ダッシュ</li><li>DASH を押してから JUMP：大ジャンプ　空中で DASH：エアダッシュ（試験）</li><li>壁に向かって JUMP：壁蹴り</li><li>物の上に出る札をタップ：調べる・動かす</li>
+   </ul>
+   <div class="actions"><button class="primary" id="startBtn" type="button">START</button></div>
+  </div>
+ </div>
+ <div class="overlay" id="pause">
+  <div class="panel"><div class="micro">PAUSE</div><h2>中断中</h2>
+   <div class="actions col"><button class="primary" id="resumeBtn" type="button">つづける</button><button class="secondary" id="retryBtn" type="button">最初からやり直す</button><button class="secondary" id="seBtn" type="button">効果音：ON</button><button class="secondary" id="airBtn" type="button">エアダッシュ（試験）：ON</button><button class="secondary" id="carryBtn" type="button">壁蹴りのダッシュ維持：ON</button><button class="secondary" id="boxBtn" type="button">当たり判定の表示：OFF</button><button class="secondary" id="fsBtn" type="button" hidden>全画面の切り替え</button></div>
+  </div>
+ </div>
+ <div class="overlay" id="clear">
+  <div class="panel"><div class="micro">STAGE CLEAR</div><h2>到達</h2>
+   <p class="result">TIME <b id="resTime">0:00.0</b>　MISS <b id="resMiss">0</b></p>
+   <div class="actions col"><button class="primary" id="againBtn" type="button">もう一度</button></div>
+  </div>
+ </div>
+</main>
+<script src="js/sim.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

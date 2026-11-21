@@ -1,0 +1,16 @@
+const {chromium}=require('/opt/npm-tools/node_modules/playwright');const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{const b=await chromium.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});
+ const w=844,h=390;const c=await b.newContext({viewport:{width:w,height:h},deviceScaleFactor:2,hasTouch:true,isMobile:true});const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));
+ await p.goto('http://localhost:8770/');await sleep(300);await p.tap('#startBtn');await sleep(400);
+ await p.evaluate('window.__d=0;const _e=__zanko.R.event;__zanko.R.event=function(e){if(e.t==="dash")__d++;_e(e)};const s=__zanko.sim;s.enemies.length=0;s.p.x=112*16;s.p.y=10*16;s.L.t.fill(1,10*162+123,10*162+129)');await sleep(300);
+ const cdp=await c.newCDPSession(p);const T=(type,pts)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:pts.map(([x,y,id])=>({x,y,id}))});
+ const bt=async s=>{const r=await p.locator(s).boundingBox();return [r.x+r.width/2,r.y+r.height/2]};const J=await bt('.tbtn.jump'),D=await bt('.tbtn.dash');
+ const st=()=>p.evaluate('(()=>{const q=__zanko.sim.p;return {x:Math.round(q.x),vx:q.vx,g:q.ground,fast:q.airFast,dash:q.dashT,dashes:__d}})()');
+ const S=[150,h-110,1];await T('touchStart',[[110,h-110,1]]);await T('touchMove',[S]);await sleep(100);
+ await T('touchStart',[S,[D[0],D[1],2]]);await sleep(1300);console.log('DASH held 1.3s      ->',JSON.stringify(await st()));
+ await T('touchMove',[S,[J[0],J[1],2]]);await sleep(120);console.log('slid onto JUMP      ->',JSON.stringify(await st()));
+ await T('touchMove',[S,[D[0],D[1],2]]);await sleep(700);console.log('back on DASH, landed->',JSON.stringify(await st()));
+ await T('touchEnd',[[D[0],D[1],2]]);await sleep(800);console.log('DASH lifted, 0.8s   ->',JSON.stringify(await st()));
+ await T('touchStart',[S,[D[0],D[1],3]]);await sleep(40);await T('touchEnd',[[D[0],D[1],3]]);await sleep(300);console.log('DASH tapped, 0.3s   ->',JSON.stringify(await st()));await sleep(400);console.log('             0.7s   ->',JSON.stringify(await st()));
+ await T('touchEnd',[S]);await sleep(200);console.log('left held:',JSON.stringify(await p.evaluate('__zanko.input()')));
+ console.log('errors',errs);await b.close();})();

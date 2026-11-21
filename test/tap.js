@@ -1,0 +1,16 @@
+const {chromium}=require('/opt/npm-tools/node_modules/playwright');const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{const b=await chromium.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox']});const errs=[];
+ const c=await b.newContext({viewport:{width:1280,height:720}});const p=await c.newPage();p.on('pageerror',e=>errs.push(e.message));
+ await p.goto('http://localhost:8770/');await sleep(300);await p.click('#startBtn');await sleep(300);await p.mouse.move(700,300);const R={button:'right'};
+ const st=()=>p.evaluate('(()=>{const s=__zanko.sim,q=s.p;return {x:Math.round(q.x),vx:q.vx,vy:+q.vy.toFixed(1),g:q.ground,fast:q.airFast,dash:q.dashT}})()');
+ await p.evaluate('window.__d=0;const _e=__zanko.R.event;__zanko.R.event=function(e){if(e.t==="dash")__d++;_e(e)};__zanko.sim.enemies.length=0;__zanko.sim.p.x=112*16;__zanko.sim.p.y=10*16;__zanko.sim.L.t.fill(1,10*162+123,10*162+129)');await sleep(200);
+ await p.mouse.down(R);await sleep(30);console.log('right press, 30ms ->',JSON.stringify(await st()));await sleep(40);await p.mouse.up(R);
+ let top=1e9;for(let i=0;i<10;i++){await sleep(40);top=Math.min(top,await p.evaluate('__zanko.sim.p.y'));}console.log(' short press (70ms) height',(160-top).toFixed(1),'px (full 47.5)');await sleep(400);
+ await p.keyboard.press('KeyD',{delay:40});await sleep(50);await p.keyboard.down('KeyD');await sleep(1300);
+ console.log('double-tap right and hold 1.3s ->',JSON.stringify(await st()),'dashes started:',await p.evaluate('__d'));
+ await p.mouse.down(R);await sleep(250);await p.mouse.up(R);await sleep(100);console.log(' jump while holding ->',JSON.stringify(await st()));
+ await sleep(500);console.log(' after landing, still holding ->',JSON.stringify(await st()),'dashes:',await p.evaluate('__d'));
+ await p.keyboard.up('KeyD');await sleep(700);console.log(' released ->',JSON.stringify(await st()));
+ await p.keyboard.down('KeyA');await sleep(400);console.log(' single press left ->',JSON.stringify(await st()),'(expect: walk)');await p.keyboard.up('KeyA');
+ await p.keyboard.press('Escape');await sleep(200);await p.screenshot({path:'/home/claude/shots/z/pause4.png'});
+ console.log('errors',errs);await b.close();})();
