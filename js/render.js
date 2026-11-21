@@ -9,10 +9,10 @@ const COL = { blade: '#9ff6ff', glow: 'rgba(80,215,255,', scarf: '#b06cff', armo
 // Saber sweep per move: start angle, end angle (0 = forward, negative = up), reach.
 const SWEEP = { s1: [-2.2, 0.95, 31], s2: [1.25, -1.95, 34], s3: [-2.75, 1.3, 43], air: [-2.45, 1.35, 37], dash: [-1.0, 0.6, 43], wall: [-2.2, 1.0, 33], charge: [-3.05, 1.5, 53] };
 
-const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true, fx: true };
+const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true, fx: true, post: true, waves: [], rb: 0, hurtFx: 0 };
 
 R.reset = function (s) {
-  R.parts.length = R.arcs.length = R.ghosts.length = 0; R.scarf.length = 0; R.shake = 0; R.lastX = s.p.x;
+  R.parts.length = R.arcs.length = R.ghosts.length = 0; R.scarf.length = 0; R.shake = 0; R.waves.length = 0; R.rb = 0; R.hurtFx = 0; R.lastX = s.p.x;
   R.cam.x = s.p.x - R.VW / 2; R.cam.y = s.p.y - R.VH * 0.62; clampCam(s);
 };
 function clampCam(s) {
@@ -46,6 +46,8 @@ R.step = function (s) {
     if (p.atk.f > ATK[p.atk.id].act[1]) cur.live = false;
   } else if (live) live.live = false;
   for (let i = R.arcs.length - 1; i >= 0; i--) { const a = R.arcs[i]; if (!a.live && ++a.fade > 9) R.arcs.splice(i, 1); }
+  R.rb += ((!p.dead && (p.dashT > 0 || p.airDashT > 0) ? 1 : 0) - R.rb) * 0.3; if (R.hurtFx > 0) R.hurtFx--;
+  for (let i = R.waves.length - 1; i >= 0; i--) if (--R.waves[i].life <= 0) R.waves.splice(i, 1);
   // afterimages while moving at dash speed
   if (!p.dead && (p.dashT > 0 || p.airDashT > 0 || (p.airFast && !p.ground)) && R.t % (p.airDashT > 0 ? 2 : 3) === 0) R.ghosts.push({ pose: Object.assign({}, pose), life: 11 });
   for (let i = R.ghosts.length - 1; i >= 0; i--) if (--R.ghosts[i].life <= 0) R.ghosts.splice(i, 1);
@@ -81,12 +83,12 @@ R.event = function (e) {
     case 'dash': dust(e.x - e.face * 4, e.y, 5, -e.face * 0.9, -0.1); break;
     case 'kick': dust(e.x, e.y, 4, e.dir * 0.3, 0.2); break;
     case 'airdash': R.parts.push({ x: e.x - e.face * 4, y: e.y, vx: 0, vy: 0, life: 10, max: 10, size: 13, color: COL.blade, add: true, ring: true }); sparks(e.x - e.face * 6, e.y, 6, 1.6, COL.blade, -e.face); break;
-    case 'hit': sparks(e.x, e.y, e.heavy ? 16 : 9, e.heavy ? 3.6 : 2.6, COL.blade, e.face); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: e.heavy ? 9 : 6, max: e.heavy ? 9 : 6, size: e.heavy ? 20 : 13, color: '#ffffff', add: true, star: true, rot: Math.random() * 1.5 }); R.shake = Math.max(R.shake, e.heavy ? 4.5 : 1.6); break;
-    case 'kill': sparks(e.x, e.y, 22, 3.2, COL.foe); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 26, color: COL.foe, add: true, ring: true }); R.shake = Math.max(R.shake, 3); break;
+    case 'hit': R.waves.push({ x: e.x, y: e.y, r: e.heavy ? 78 : 46, amp: e.heavy ? 3.4 : 1.9, life: e.heavy ? 20 : 14, max: e.heavy ? 20 : 14 }); sparks(e.x, e.y, e.heavy ? 16 : 9, e.heavy ? 3.6 : 2.6, COL.blade, e.face); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: e.heavy ? 9 : 6, max: e.heavy ? 9 : 6, size: e.heavy ? 20 : 13, color: '#ffffff', add: true, star: true, rot: Math.random() * 1.5 }); R.shake = Math.max(R.shake, e.heavy ? 4.5 : 1.6); break;
+    case 'kill': R.waves.push({ x: e.x, y: e.y, r: 96, amp: 4.2, life: 22, max: 22 }); sparks(e.x, e.y, 22, 3.2, COL.foe); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 14, max: 14, size: 26, color: COL.foe, add: true, ring: true }); R.shake = Math.max(R.shake, 3); break;
     case 'cut': sparks(e.x, e.y, 7, 2, COL.foe); break;
-    case 'hurt': sparks(e.x, e.y, 10, 2.4, COL.danger); R.shake = Math.max(R.shake, 3.5); break;
-    case 'die': sparks(e.x, e.y, 30, 3.5, COL.blade); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 22, max: 22, size: 46, color: COL.blade, add: true, ring: true }); R.shake = 6; break;
-    case 'charged': R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 12, max: 12, size: 24, color: '#ffffff', add: true, ring: true, home: true }); break;
+    case 'hurt': R.hurtFx = POSTFX.hurtT; sparks(e.x, e.y, 10, 2.4, COL.danger); R.shake = Math.max(R.shake, 3.5); break;
+    case 'die': R.waves.push({ x: e.x, y: e.y, r: 130, amp: 5, life: 26, max: 26 }); sparks(e.x, e.y, 30, 3.5, COL.blade); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 22, max: 22, size: 46, color: COL.blade, add: true, ring: true }); R.shake = 6; break;
+    case 'charged': R.waves.push({ x: e.x, y: e.y, r: 52, amp: 1.5, life: 14, max: 14 }); R.parts.push({ x: e.x, y: e.y, vx: 0, vy: 0, life: 12, max: 12, size: 24, color: '#ffffff', add: true, ring: true, home: true }); break;
     case 'check': R.parts.push({ x: e.x, y: e.y - 20, vx: 0, vy: 0, life: 20, max: 20, size: 34, color: COL.blade, add: true, ring: true }); break;
     case 'spawn': case 'respawn': R.parts.push({ x: e.x, y: e.y - (e.t === 'respawn' ? 14 : 0), vx: 0, vy: 0, life: 14, max: 14, size: 22, color: '#ffffff', add: true, ring: true }); if (e.t === 'respawn') R.scarf.length = 0; break;
     case 'shot': sparks(e.x, e.y, 4, 1.2, COL.foe); break;
@@ -176,6 +178,7 @@ function bladeBlock(c, h, f, u) {                         // expects the hero's 
     const sw = sweepAngle(h.atk), prev = sweepAngle({ id: h.atk.id, f: Math.max(0, h.atk.f - 2) }), end = SWEEP[h.atk.id][1];
     const dir = end >= sw.from ? 1 : -1, len = sw.reach - 5, ox = (f.hx - f.ax) * u, oy = (f.hy - f.ay) * u;
     const width = 0.26 + clamp(Math.abs(sw.ang - prev.ang) * 1.1, 0, 0.55), n = 14, dim = R.fx ? TUNE.keep : 1;
+    { const r = len + 14; c.beginPath(); c.rect(ox - r, oy - r, r * 2, r * 2); c.clip(); }   // tight clip box: keeps the blurred glow of the blade cheap
     c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
     for (let i = 0; i < n; i++) {                                     // trailing edge (faint) to leading edge (bright)
       const a0 = sw.ang - dir * width * (1 - i / n), a1 = sw.ang - dir * width * (1 - (i + 1) / n), k = (i + 1) / n;
@@ -253,6 +256,7 @@ function drawArc(c, a) {
     for (let i = Math.floor((a.x - r) / T); i <= Math.floor((a.x + r) / T); i++) if (at(i, row) !== 1) c.rect(i * T, a.floor, T, 300);
     c.clip();
   }
+  { const r = a.reach + 14; c.beginPath(); c.rect(cx - r, cy - r, r * 2, r * 2); c.clip(); }   // a tight clip box keeps the blurred glow cheap (measured: an arc in the air, which had no clip at all, cost 2.5x a ground one)
   c.globalCompositeOperation = 'lighter'; c.shadowColor = 'rgba(80,215,255,.8)'; c.shadowBlur = (a.heavy ? 7 : 5) * R.K * dim;
   shape(a.heavy ? 0.46 : 0.36, COL.glow + (0.34 * k * dim) + ')');
   c.shadowBlur = 0; shape(a.heavy ? 0.13 : 0.09, 'rgba(235,252,255,' + (0.85 * k * (R.fx ? TUNE.core : 1)) + ')');
@@ -385,6 +389,86 @@ function drawReflections(c, s) {
     if (SABER_REFLECT > 0 && (R.pose.atk || R.arcs.length)) reflect(c, s, p.x - 64, p.x + 64, p.y, () => { const h = R.pose; if (h.atk && R.sprite && HERO.ok) { const f = HERO_ATLAS.frames[heroFrame(h)]; c.save(); c.translate(h.x, h.y); c.scale(h.face, 1); bladeBlock(c, h, f, 1 / HERO_ATLAS.ppu); c.restore(); } for (const a of R.arcs) drawArc(c, a); }, SABER_REFLECT);
   }
 }
+// ---- shader pass (R.post): the finished 2D picture goes through a fragment shader on a WebGL canvas laid over it ----
+// First use: shock waves from hits bend the picture, with a little colour fringing inside the bend.
+// The WebGL canvas is only shown while a wave is alive, so there is no per-frame cost the rest of the time.
+const POST = { gl: null, cv: null, fail: false, shown: false };
+const POST_FS = `precision mediump float;
+uniform sampler2D t; uniform vec2 res; uniform vec4 w[4]; uniform float a[4]; uniform vec4 h[3]; uniform float hs[3]; uniform float tm; uniform float k; uniform vec2 ctr; uniform float rb; uniform float ca;
+void main(){
+  vec2 px = gl_FragCoord.xy, off = vec2(0.0);
+  for (int i = 0; i < 4; i++) {
+    vec2 d = px - w[i].xy; float dist = length(d);
+    float k = 1.0 - clamp(abs(dist - w[i].z) / max(w[i].w, 1.0), 0.0, 1.0); k = k * k * (3.0 - 2.0 * k);
+    off += d / max(dist, 1.0) * k * a[i];
+  }
+  vec2 fr = off * 0.4 / res, q = px / k;
+  for (int i = 0; i < 3; i++) {                                   // heat: columns of air that wobble as they rise and thin out with height
+    float up = (px.y - h[i].y) / max(h[i].w, 1.0), side = min(px.x - h[i].x, h[i].z - px.x) / (4.0 * k);
+    float m = clamp(side, 0.0, 1.0) * clamp(up * 8.0, 0.0, 1.0) * clamp(1.0 - up, 0.0, 1.0) * hs[i];
+    off += m * k * vec2(sin(q.y * 0.42 - tm * 0.19 + q.x * 0.11) + 0.6 * sin(q.y * 0.93 - tm * 0.31), 0.5 * sin(q.x * 0.5 + q.y * 0.3 - tm * 0.23));
+  }
+  vec2 uv = (px - off) / res, cs = fr + vec2(ca / res.x, 0.0);   // ca: a sideways colour split over the whole view for a moment (taking a hit)
+  vec3 col = vec3(texture2D(t, uv + cs).r, texture2D(t, uv).g, texture2D(t, uv - cs).b);
+  if (rb > 0.0) {                                                 // dash: the picture smears towards the hero, more the further out, nothing near her
+    vec2 d = (px - ctr) / res; float far = smoothstep(0.22, 0.8, length(d * vec2(res.x / res.y, 1.0))) * rb;
+    for (int i = 1; i < 5; i++) col += texture2D(t, uv - d * far * float(i) * 0.25).rgb;
+    col *= 0.2;
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
+function postInit(src) {
+  if (POST.fail || POST.gl) return !!POST.gl;
+  try {
+    const cv = document.createElement('canvas'); cv.id = 'post'; cv.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;display:none';
+    const gl = cv.getContext('webgl', { alpha: false, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance' });
+    if (!gl) throw new Error('no webgl');
+    const sh = (type, code) => { const o = gl.createShader(type); gl.shaderSource(o, code); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }')); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, POST_FS)); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+    gl.useProgram(pr); const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    POST.u = { res: gl.getUniformLocation(pr, 'res'), w: gl.getUniformLocation(pr, 'w'), a: gl.getUniformLocation(pr, 'a'), h: gl.getUniformLocation(pr, 'h'), hs: gl.getUniformLocation(pr, 'hs'), tm: gl.getUniformLocation(pr, 'tm'), k: gl.getUniformLocation(pr, 'k'), ctr: gl.getUniformLocation(pr, 'ctr'), rb: gl.getUniformLocation(pr, 'rb'), ca: gl.getUniformLocation(pr, 'ca') };
+    cv.addEventListener('webglcontextlost', e => { e.preventDefault(); POST.fail = true; cv.style.display = 'none'; });
+    src.parentNode.insertBefore(cv, src.nextSibling); POST.cv = cv; POST.gl = gl;
+  } catch (err) { POST.fail = true; POST.err = String(err); }
+  return !!POST.gl;
+}
+function postShow(on) { if (POST.cv && POST.shown !== on) { POST.cv.style.display = on ? 'block' : 'none'; POST.shown = on; } }
+const POSTFX = { dash: 0.018, hurt: 2.4, hurtT: 10 };          // dash: smear length at the far edge, as a share of the distance to the hero. hurt: colour split in game units, and how many steps it lasts
+R.postfx = POSTFX;
+const HEAT = { L: null, runs: [], spikes: 0, charge: 0.4 };   // strengths in game units of wobble. Spikes: off (Yota: hard to see, not worth it); set above 0 to bring it back
+function heatZones(s) {                                          // [x0, bottom, x1, height, strength] in world units, only those in view
+  if (HEAT.L !== s.L) { HEAT.L = s.L; HEAT.runs = []; const L = s.L;
+    for (let j = 0; j < L.H; j++) for (let i = 0; i < L.W; i++) if (L.t[j * L.W + i] === 2) { let n = i; while (n < L.W && L.t[j * L.W + n] === 2) n++; if (HEAT.spikes > 0) HEAT.runs.push([i * T - 3, j * T + 6, n * T + 3, 62, HEAT.spikes]); i = n; } }
+  const out = HEAT.runs.filter(z => z[2] > R.cam.x && z[0] < R.cam.x + R.VW && z[1] - z[3] < R.cam.y + R.VH && z[1] > R.cam.y);
+  const p = s.p; if (!p.dead && p.charge >= C.CHARGE_T) out.push([p.x - 15, p.y - 2, p.x + 15, 50, HEAT.charge]);   // a fully charged blade heats the air around the hero
+  return out.slice(0, 3);
+}
+R.heat = HEAT;
+function drawPost(c, s) {
+  const live = R.waves.filter(q => q.life > 0), hot = R.fx && R.post ? heatZones(s) : [];
+  const blur = R.rb > 0.03 ? R.rb : 0;
+  if (!R.fx || !R.post || !(live.length || hot.length || blur || R.hurtFx > 0) || typeof document === 'undefined' || !postInit(c.canvas) || POST.fail) { postShow(false); return; }
+  const gl = POST.gl, cv = POST.cv, cw = c.canvas.width, ch = c.canvas.height;
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  gl.viewport(0, 0, cw, ch);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c.canvas);
+  if (!POST.checked) { POST.checked = true; if (gl.getError() !== gl.NO_ERROR) { POST.fail = true; POST.err = 'upload'; postShow(false); return; } }
+  const w = new Float32Array(16), a = new Float32Array(4);
+  live.slice(-4).forEach((q, i) => { const u = 1 - q.life / q.max, e = 1 - (1 - u) * (1 - u);              // the ring runs out fast, then slows; it fades as it goes
+    w[i * 4] = (q.x - R.cam.x) * R.K; w[i * 4 + 1] = ch - (q.y - R.cam.y) * R.K; w[i * 4 + 2] = q.r * e * R.K; w[i * 4 + 3] = (5 + q.r * 0.22) * R.K; a[i] = q.amp * (1 - u) * R.K; });
+  const hz = new Float32Array(12), hst = new Float32Array(3);
+  hot.forEach((z, i) => { hz[i * 4] = (z[0] - R.cam.x) * R.K; hz[i * 4 + 1] = ch - (z[1] - R.cam.y) * R.K; hz[i * 4 + 2] = (z[2] - R.cam.x) * R.K; hz[i * 4 + 3] = z[3] * R.K; hst[i] = z[4]; });
+  gl.uniform4fv(POST.u.h, hz); gl.uniform1fv(POST.u.hs, hst); gl.uniform1f(POST.u.tm, R.t % 100000); gl.uniform1f(POST.u.k, R.K);
+  gl.uniform2f(POST.u.ctr, (s.p.x - R.cam.x) * R.K, ch - (s.p.y - 14 - R.cam.y) * R.K); gl.uniform1f(POST.u.rb, blur * POSTFX.dash); gl.uniform1f(POST.u.ca, R.hurtFx / POSTFX.hurtT * POSTFX.hurt * R.K);
+  gl.uniform2f(POST.u.res, cw, ch); gl.uniform4fv(POST.u.w, w); gl.uniform1fv(POST.u.a, a);
+  gl.drawArrays(gl.TRIANGLES, 0, 3); postShow(true);
+}
+R.postInfo = () => ({ ready: !!POST.gl, fail: POST.fail, err: POST.err || null, shown: POST.shown });
 const GRAIN = { cv: null };
 function drawFinish(c) {                                    // in device pixels, over everything: colour wash, vignette, grain
   const cw = c.canvas.width, ch = c.canvas.height;
@@ -673,6 +757,7 @@ R.draw = function (s) {
     if (p.atk) { const a = ATK[p.atk.id], b = Z.attackBox(p); c.strokeStyle = p.atk.f >= a.act[0] && p.atk.f <= a.act[1] ? '#ff5a5a' : 'rgba(255,90,90,.35)'; c.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
     c.strokeStyle = '#ffd24d'; for (const e of s.enemies) if (!e.dead) c.strokeRect(e.x - e.hw, e.y - e.h, e.hw * 2, e.h);
   }
+  drawPost(c, s);
 };
 G.ZankoRender = R;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -170,6 +170,7 @@ $('retryBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('againBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('seBtn').addEventListener('click', () => { seOn = !seOn; $('seBtn').textContent = '効果音：' + (seOn ? 'ON' : 'OFF'); });
 $('boxBtn').addEventListener('click', toggleBoxes);
+$('postBtn').addEventListener('click', () => { R.post = !R.post; $('postBtn').textContent = 'シェーダー効果（歪み・ブレ・色ずれ）：' + (R.post ? 'ON' : 'OFF'); });
 $('fxBtn').addEventListener('click', () => { R.fx = !R.fx; $('fxBtn').textContent = '空気感：' + (R.fx ? 'ON' : 'OFF'); });
 $('spriteBtn').addEventListener('click', () => { R.sprite = !R.sprite; $('spriteBtn').textContent = '絵の表示：' + (R.sprite ? 'ON' : 'OFF'); });
 $('airBtn').addEventListener('click', () => { C.AIR_DASH = !C.AIR_DASH; $('airBtn').textContent = 'エアダッシュ（試験）：' + (C.AIR_DASH ? 'ON' : 'OFF'); });
