@@ -170,6 +170,7 @@ $('retryBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('againBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('seBtn').addEventListener('click', () => { seOn = !seOn; $('seBtn').textContent = '効果音：' + (seOn ? 'ON' : 'OFF'); });
 $('boxBtn').addEventListener('click', toggleBoxes);
+$('fxBtn').addEventListener('click', () => { R.fx = !R.fx; $('fxBtn').textContent = '空気感：' + (R.fx ? 'ON' : 'OFF'); });
 $('spriteBtn').addEventListener('click', () => { R.sprite = !R.sprite; $('spriteBtn').textContent = '絵の表示：' + (R.sprite ? 'ON' : 'OFF'); });
 $('airBtn').addEventListener('click', () => { C.AIR_DASH = !C.AIR_DASH; $('airBtn').textContent = 'エアダッシュ（試験）：' + (C.AIR_DASH ? 'ON' : 'OFF'); });
 $('carryBtn').addEventListener('click', () => { C.KICK_CARRY = !C.KICK_CARRY; $('carryBtn').textContent = '壁蹴りのダッシュ維持：' + (C.KICK_CARRY ? 'ON' : 'OFF'); });

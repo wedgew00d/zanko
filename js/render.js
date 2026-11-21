@@ -9,7 +9,7 @@ const COL = { blade: '#9ff6ff', glow: 'rgba(80,215,255,', scarf: '#b06cff', armo
 // Saber sweep per move: start angle, end angle (0 = forward, negative = up), reach.
 const SWEEP = { s1: [-2.2, 0.95, 31], s2: [1.25, -1.95, 34], s3: [-2.75, 1.3, 43], air: [-2.45, 1.35, 37], dash: [-1.0, 0.6, 43], wall: [-2.2, 1.0, 33], charge: [-3.05, 1.5, 53] };
 
-const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true };
+const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true, fx: true };
 
 R.reset = function (s) {
   R.parts.length = R.arcs.length = R.ghosts.length = 0; R.scarf.length = 0; R.shake = 0; R.lastX = s.p.x;
@@ -33,7 +33,8 @@ R.step = function (s) {
   else if (p.airDashT > 0) kind = 'dash'; else if (!p.ground) kind = p.vy < 0 ? 'rise' : 'fall'; else if (p.dashT > 0) kind = 'dash'; else if (Math.abs(p.vx) > 0.1) kind = 'run';
   if (kind === 'run') R.phase += Math.abs(moved) / 24 * TAU; else if (kind !== 'dash') R.phase = 0;
   R.runU = kind === 'run' ? (R.runU + Math.abs(moved) / RUN_CYCLE) % 1 : 0; R.deadT = p.dead ? R.deadT + 1 : 0;   // feet advance with distance: no sliding
-  const pose = { x: p.x, y: p.y, face: p.face, kind, phase: R.phase, t: R.t, vy: p.vy, atk: p.atk ? { id: p.atk.id, f: p.atk.f } : null, charge: p.charge, inv: p.inv, use: p.act ? p.act.f : 0, wall: p.wall, runU: R.runU, deadT: R.deadT, adash: p.airDashT > 0 };
+  const pose = { x: p.x, y: p.y, face: p.face, kind, phase: R.phase, t: R.t, vy: p.vy, atk: p.atk ? { id: p.atk.id, f: p.atk.f } : null, charge: p.charge, inv: p.inv, use: p.act ? p.act.f : 0, wall: p.wall, runU: R.runU, deadT: R.deadT, adash: p.airDashT > 0, floor: p.ground ? p.y : null };
+  R.L = s.L;
   R.pose = pose;
   // saber trail: follow the live sweep, then let it fade where it ended
   const live = R.arcs.find(a => a.live);
@@ -41,7 +42,7 @@ R.step = function (s) {
     const sw = sweepAngle(p.atk);
     if (live && live.key === p.atk) { live.to = sw.ang; }
     else { if (live) live.live = false; R.arcs.push({ key: p.atk, live: true, x: p.x, y: p.y, face: p.face, from: sw.from, to: sw.ang, reach: sw.reach, heavy: !!ATK[p.atk.id].heavy, fade: 0, sx: 1.2, sy: -22 }); }
-    const cur = R.arcs[R.arcs.length - 1], sk = skeleton(pose); cur.x = p.x; cur.y = p.y; cur.face = p.face; cur.sx = sk.sh[0]; cur.sy = sk.sh[1];
+    const cur = R.arcs[R.arcs.length - 1], sk = skeleton(pose); cur.x = p.x; cur.y = p.y; cur.face = p.face; cur.sx = sk.sh[0]; cur.sy = sk.sh[1]; cur.floor = p.ground ? p.y : null;
     if (p.atk.f > ATK[p.atk.id].act[1]) cur.live = false;
   } else if (live) live.live = false;
   for (let i = R.arcs.length - 1; i >= 0; i--) { const a = R.arcs[i]; if (!a.live && ++a.fade > 9) R.arcs.splice(i, 1); }
@@ -139,6 +140,7 @@ if (typeof HERO_ATLAS !== 'undefined' && typeof Image !== 'undefined') {
   HERO.img = new Image(); HERO.img.onload = () => { HERO.ok = true; }; HERO.img.src = 'assets/hero.png';
 }
 R.spriteReady = () => HERO.ok;
+R.bloom = v => { if (v !== undefined) BLOOM.on = !!v; return BLOOM.on; };
 function heroTint(color) {                               // flat-colour copy of the atlas, for afterimages and the charge flash
   if (!HERO.tints[color]) {
     const cv = document.createElement('canvas'); cv.width = HERO.img.width; cv.height = HERO.img.height;
@@ -158,41 +160,52 @@ function heroFrame(h) {
   }
   return (h.t % 160) < 80 ? 'idle0' : 'idle1';
 }
+function bladeBlock(c, h, f, u) {                         // expects the hero's transform (translate + facing) to be set
+  if (!(h.atk && f.hx !== undefined)) return;
+  c.save();
+  if (h.floor != null && R.L) {                              // standing on a floor: the blade stops at the floor line instead of passing through it
+    // (in the hero's own coordinates: x is mirrored by the facing, y = 0 is the feet). Columns with no floor tile stay open, so the blade can hang over a ledge.
+    const L = R.L, row = Math.round(h.floor / T), at = (i, j) => (i < 0 || i >= L.W || j < 0 || j >= L.H) ? 0 : L.t[j * L.W + i];
+    c.beginPath(); c.rect(-400, -400, 800, 400);
+    for (let i = Math.floor((h.x - 80) / T); i <= Math.floor((h.x + 80) / T); i++) if (at(i, row) !== 1) c.rect((i * T - h.x) * h.face, 0, T * h.face, 300);
+    c.clip();
+  }
+    // The blade is drawn as a smear: a fan from the hands that trails behind the swing, plus a glow over the grip.
+    // The pictures hold the hilt at whatever angle the pose needs, so a thin straight blade would look bent at the hand;
+    // the fan and the glow hide the hilt and the hands, and the eye reads one continuous stroke along the leading edge.
+    const sw = sweepAngle(h.atk), prev = sweepAngle({ id: h.atk.id, f: Math.max(0, h.atk.f - 2) }), end = SWEEP[h.atk.id][1];
+    const dir = end >= sw.from ? 1 : -1, len = sw.reach - 5, ox = (f.hx - f.ax) * u, oy = (f.hy - f.ay) * u;
+    const width = 0.26 + clamp(Math.abs(sw.ang - prev.ang) * 1.1, 0, 0.55), n = 14, dim = R.fx ? TUNE.keep : 1;
+    c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {                                     // trailing edge (faint) to leading edge (bright)
+      const a0 = sw.ang - dir * width * (1 - i / n), a1 = sw.ang - dir * width * (1 - (i + 1) / n), k = (i + 1) / n;
+      const bx = -Math.sin(sw.ang) * 1.6, by = Math.cos(sw.ang) * 1.6;   // the fan starts as wide as the hands
+      c.fillStyle = COL.glow + ((0.05 + 0.5 * k * k * k) * dim).toFixed(3) + ')';
+      c.beginPath(); c.moveTo(ox - bx, oy - by); c.lineTo(ox + Math.cos(a0) * len, oy + Math.sin(a0) * len); c.lineTo(ox + Math.cos(a1) * len, oy + Math.sin(a1) * len); c.lineTo(ox + bx, oy + by); c.fill();
+    }
+    const tx = ox + Math.cos(sw.ang) * len, ty = oy + Math.sin(sw.ang) * len;
+    c.shadowColor = COL.blade; c.shadowBlur = 8 * R.K * dim;
+    c.strokeStyle = COL.glow + (0.8 * dim) + ')'; c.lineWidth = 3.6; c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.stroke();
+    c.strokeStyle = '#ffffff'; c.lineWidth = 1.7; c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.stroke();
+    c.shadowBlur = 0;
+    const g = c.createRadialGradient(ox, oy, 0, ox, oy, 5.2);         // glow over the grip: hides the hilt and the hands
+    g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.35, COL.glow + (0.75 * dim) + ')'); g.addColorStop(1, COL.glow + '0)');
+    c.fillStyle = g; c.beginPath(); c.arc(ox, oy, 5.2, 0, TAU); c.fill();
+  c.restore();
+}
 function drawHeroSprite(c, h, ghost) {
   const name = heroFrame(h), f = HERO_ATLAS.frames[name], u = 1 / HERO_ATLAS.ppu;
   const flip = name === 'slide' && h.wall ? h.wall : h.face;         // the wall-slide picture faces the wall
   c.save(); c.translate(h.x, h.y); c.scale(flip, 1); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
   const flash = ghost === '#ffffff'; if (flash) ghost = null;           // charge flash: the picture, with a white wash over it
-  if (!ghost) {                                                       // pale rim, so the dark suit reads against the dark stage
+  if (!ghost && !R.noRim) {                                           // pale rim, so the dark suit reads against the dark stage
     const rim = heroTint('#a9dcff'), o = 0.42, ga = c.globalAlpha; c.globalAlpha = ga * 0.6;
     for (const d of [[o, 0], [-o, 0], [0, o], [0, -o]]) c.drawImage(rim, f.x, f.y, f.w, f.h, -f.ax * u + d[0], -f.ay * u + d[1], f.w * u, f.h * u);
     c.globalAlpha = ga;
   }
   c.drawImage(ghost ? heroTint(ghost) : HERO.img, f.x, f.y, f.w, f.h, -f.ax * u, -f.ay * u, f.w * u, f.h * u);
   if (flash) { c.save(); c.globalAlpha *= 0.5; c.drawImage(heroTint('#ffffff'), f.x, f.y, f.w, f.h, -f.ax * u, -f.ay * u, f.w * u, f.h * u); c.restore(); }
-  if (h.atk && f.hx !== undefined && !ghost) {
-    // The blade is drawn as a smear: a fan from the hands that trails behind the swing, plus a glow over the grip.
-    // The pictures hold the hilt at whatever angle the pose needs, so a thin straight blade would look bent at the hand;
-    // the fan and the glow hide the hilt and the hands, and the eye reads one continuous stroke along the leading edge.
-    const sw = sweepAngle(h.atk), prev = sweepAngle({ id: h.atk.id, f: Math.max(0, h.atk.f - 2) }), end = SWEEP[h.atk.id][1];
-    const dir = end >= sw.from ? 1 : -1, len = sw.reach - 5, ox = (f.hx - f.ax) * u, oy = (f.hy - f.ay) * u;
-    const width = 0.26 + clamp(Math.abs(sw.ang - prev.ang) * 1.1, 0, 0.55), n = 14;
-    c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
-    for (let i = 0; i < n; i++) {                                     // trailing edge (faint) to leading edge (bright)
-      const a0 = sw.ang - dir * width * (1 - i / n), a1 = sw.ang - dir * width * (1 - (i + 1) / n), k = (i + 1) / n;
-      const bx = -Math.sin(sw.ang) * 1.6, by = Math.cos(sw.ang) * 1.6;   // the fan starts as wide as the hands
-      c.fillStyle = COL.glow + (0.05 + 0.5 * k * k * k).toFixed(3) + ')';
-      c.beginPath(); c.moveTo(ox - bx, oy - by); c.lineTo(ox + Math.cos(a0) * len, oy + Math.sin(a0) * len); c.lineTo(ox + Math.cos(a1) * len, oy + Math.sin(a1) * len); c.lineTo(ox + bx, oy + by); c.fill();
-    }
-    const tx = ox + Math.cos(sw.ang) * len, ty = oy + Math.sin(sw.ang) * len;
-    c.shadowColor = COL.blade; c.shadowBlur = 8 * R.K;
-    c.strokeStyle = COL.glow + '0.8)'; c.lineWidth = 3.6; c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.stroke();
-    c.strokeStyle = '#ffffff'; c.lineWidth = 1.7; c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.stroke();
-    c.shadowBlur = 0;
-    const g = c.createRadialGradient(ox, oy, 0, ox, oy, 5.2);         // glow over the grip: hides the hilt and the hands
-    g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.35, COL.glow + '0.75)'); g.addColorStop(1, COL.glow + '0)');
-    c.fillStyle = g; c.beginPath(); c.arc(ox, oy, 5.2, 0, TAU); c.fill();
-  }
+  if (!ghost) bladeBlock(c, h, f, u);
   c.restore();
 }
 function drawHero(c, h, ghost) {
@@ -232,9 +245,17 @@ function drawArc(c, a) {
     for (let i = n; i >= 0; i--) { const s = lerp(tail, 1, i / n), w = thick * Math.pow((s - tail) / (1 - tail || 1), 1.25), q = pt(s, a.reach * (1 - w)); c.lineTo(q[0], q[1]); }
     c.closePath(); c.fillStyle = alphaCol; c.fill();
   };
-  c.save(); c.globalCompositeOperation = 'lighter'; c.shadowColor = 'rgba(80,215,255,.8)'; c.shadowBlur = (a.heavy ? 7 : 5) * R.K;
-  shape(a.heavy ? 0.46 : 0.36, COL.glow + (0.34 * k) + ')');
-  c.shadowBlur = 0; shape(a.heavy ? 0.13 : 0.09, 'rgba(235,252,255,' + (0.85 * k) + ')');
+  const dim = R.fx ? TUNE.keep : 1;                                    // see BLADE_KEEP
+  c.save();
+  if (a.floor != null && R.L) {                              // swung while standing on a floor: the arc stops at the floor line too (open where there is no floor tile)
+    const L = R.L, row = Math.round(a.floor / T), at = (i, j) => (i < 0 || i >= L.W || j < 0 || j >= L.H) ? 0 : L.t[j * L.W + i], r = a.reach + 24;
+    c.beginPath(); c.rect(a.x - r - T, a.floor - 400, (r + T) * 2, 400);
+    for (let i = Math.floor((a.x - r) / T); i <= Math.floor((a.x + r) / T); i++) if (at(i, row) !== 1) c.rect(i * T, a.floor, T, 300);
+    c.clip();
+  }
+  c.globalCompositeOperation = 'lighter'; c.shadowColor = 'rgba(80,215,255,.8)'; c.shadowBlur = (a.heavy ? 7 : 5) * R.K * dim;
+  shape(a.heavy ? 0.46 : 0.36, COL.glow + (0.34 * k * dim) + ')');
+  c.shadowBlur = 0; shape(a.heavy ? 0.13 : 0.09, 'rgba(235,252,255,' + (0.85 * k * (R.fx ? TUNE.core : 1)) + ')');
   c.restore();
 }
 
@@ -243,8 +264,165 @@ function hash(n) { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.f
 // distant skyline: two pictures that repeat sideways (their left and right ends are empty sky, so no seam shows)
 const SKY = [{ src: 'assets/bg_far.png', par: 0.2, h: 150 }, { src: 'assets/bg_near.png', par: 0.45, h: 118 }];
 if (typeof Image !== 'undefined') for (const k of SKY) { k.img = new Image(); k.img.onload = () => { k.ok = true; }; k.img.onerror = () => {}; k.img.src = k.src; }
+// ---- atmosphere (R.fx): haze over the skyline, drifting mist, light spilling from lamps and from the blade ----
+// Balance of the saber against the atmosphere. With fog wash, light pools and bloom all adding light, the blade blew out.
+// These were set by photographing the same slash with the atmosphere off (the look Yota asked to match) and on,
+// and bringing the count of blown-out pixels around the blade back to the "off" figure. A little bloom is kept as a halo.
+const TUNE = { keep: 0.65, core: 0.8, pool: 0.05, bloomSaber: 0.12, bloomParts: 0.28 };   // keep/core: the blade's and arcs' own glow and white core; pool: light the blade throws around; bloomSaber: how much of the blade and arcs goes into the bloom
+R.tune = TUNE;
+const MIST = { cv: null };
+function mistTex() {                                        // soft blobs that wrap sideways; built once
+  if (!MIST.cv && typeof document !== 'undefined') {
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128; const x = cv.getContext('2d');
+    for (let i = 0; i < 70; i++) {
+      const px = hash(i * 7 + 1) * 512, py = 30 + hash(i * 13 + 5) * 80, rx = 40 + hash(i * 3 + 9) * 90, ry = 10 + hash(i * 5 + 2) * 22;
+      for (const dx of [-512, 0, 512]) { const g = x.createRadialGradient(0, 0, 0, 0, 0, 1); g.addColorStop(0, 'rgba(120,170,255,0.10)'); g.addColorStop(1, 'rgba(120,170,255,0)'); x.save(); x.translate(px + dx, py); x.scale(rx, ry); x.fillStyle = g; x.beginPath(); x.arc(0, 0, 1, 0, TAU); x.fill(); x.restore(); }
+    }
+    MIST.cv = cv;
+  }
+  return MIST.cv;
+}
+function drawMist(c, yBase, par, speed, alpha) {
+  const m = mistTex(); if (!m) return; const w = 460, h = 84, ox = R.cam.x * (1 - par) - (R.t * speed) % w;
+  c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = alpha;
+  for (let i = Math.floor((R.cam.x - ox) / w) - 1, x = ox + i * w; x < R.cam.x + R.VW; i++, x = ox + i * w) if (x + w > R.cam.x) c.drawImage(m, x, yBase - h, w + 0.3, h);
+  c.restore();
+}
+function haze(c, yTop, yBase, rgb, a) {                     // thickens toward the foot of a layer, and stays thick below it
+  const g = c.createLinearGradient(0, yTop, 0, yBase); g.addColorStop(0, 'rgba(' + rgb + ',0)'); g.addColorStop(1, 'rgba(' + rgb + ',' + a + ')');
+  c.fillStyle = g; c.fillRect(R.cam.x - 2, yTop, R.VW + 4, yBase - yTop); c.fillStyle = 'rgba(' + rgb + ',' + a + ')'; c.fillRect(R.cam.x - 2, yBase - 0.3, R.VW + 4, R.VH + 300);
+}
+function light(c, x, y, r, rgb, a) {
+  if (x + r < R.cam.x || x - r > R.cam.x + R.VW || y + r < R.cam.y || y - r > R.cam.y + R.VH) return;
+  const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(' + rgb + ',' + a + ')'); g.addColorStop(0.45, 'rgba(' + rgb + ',' + a * 0.35 + ')'); g.addColorStop(1, 'rgba(' + rgb + ',0)');
+  c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
+}
+function drawMotes(c, n, par, seed, size, alpha) {          // drifting dust, wrapped around the view; par < 1 sits behind the stage, par > 1 in front
+  const W = R.VW + 60, H = R.VH + 40;
+  c.save(); c.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < n; i++) {
+    const h1 = hash(seed + i * 3.1), h2 = hash(seed + i * 7.7), h3 = hash(seed + i * 1.3);
+    const x = ((h1 * W - R.cam.x * par + R.t * (0.03 + h3 * 0.05)) % W + W) % W - 30, y = ((h2 * H - R.cam.y * par - R.t * (0.012 + h1 * 0.02) + Math.sin(R.t * 0.01 + i) * 6) % H + H) % H - 20;
+    const r = size * (0.6 + h3), a = alpha * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(R.t * 0.02 + i * 1.7)));
+    const px = R.cam.x + x, py = R.cam.y + y, g = c.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, 'rgba(170,215,255,' + a + ')'); g.addColorStop(1, 'rgba(170,215,255,0)');
+    c.fillStyle = g; c.fillRect(px - r, py - r, r * 2, r * 2);
+  }
+  c.restore();
+}
+function drawRig(c) {                                       // dark pipework across the top of the view, closer than the stage: it slides by faster
+  const u0 = R.cam.x * 1.5, y0 = R.cam.y, seg = 96, i0 = Math.floor(u0 / seg) - 1, i1 = i0 + Math.ceil(R.VW / seg) + 2;
+  c.save(); c.fillStyle = 'rgba(2,5,12,0.92)'; c.strokeStyle = 'rgba(2,5,12,0.92)'; c.lineCap = 'round';
+  c.fillRect(R.cam.x - 2, y0 - 2, R.VW + 4, 7.5); c.fillRect(R.cam.x - 2, y0 + 9, R.VW + 4, 2.2);
+  for (let i = i0; i <= i1; i++) {
+    const x = R.cam.x + i * seg - u0, w = 8 + hash(i * 2.3) * 12, len = 9 + hash(i * 5.1) * 16, x2 = x + seg, len2 = 9 + hash((i + 1) * 5.1) * 16;
+    c.fillRect(x + 20, y0, w, len); c.fillRect(x + 20 + w * 0.3, y0 + len, w * 0.4, 3);
+    if (hash(i * 9.7) > 0.35) { c.lineWidth = 1.1; c.beginPath(); c.moveTo(x + 24, y0 + len - 1); c.quadraticCurveTo((x + x2) / 2 + 22, y0 + Math.max(len, len2) + 14 + hash(i) * 10, x2 + 24, y0 + len2 - 1); c.stroke(); }
+  }
+  c.restore();
+}
+// ---- bloom: the things that emit light are drawn again, alone, into a small canvas; that is shrunk by halves (which blurs it) and added back ----
+const BLOOM = { cv: [], on: true };
+function drawEmitters(c, s) {
+  c.save(); c.globalCompositeOperation = 'lighter';
+  const dot = (x, y, r, rgb, a) => { c.fillStyle = 'rgba(' + rgb + ',' + a + ')'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); };
+  const P = R.sprite && PROP.ok ? PROP_ATLAS.frames : null;
+  for (const th of s.things) {
+    if (th.type === 'term') { const r = P ? P.term.rect : [-9, -34, 18, 14]; c.fillStyle = 'rgba(80,215,255,' + (s.near === th ? 0.55 : 0.36) + ')'; c.fillRect(th.x + r[0], th.y + r[1], r[2], r[3]); }
+    else if (th.type === 'switch') { const l = P ? P[th.used ? 'switch1' : 'switch0'].lamp : [0, -16]; dot(th.x + l[0], th.y + l[1], 2.2, th.used ? '159,246,255' : '255,184,77', 0.9); }
+    else if (!th.used) { c.fillStyle = 'rgba(125,255,176,0.55)'; c.fillRect(th.x - 1.3, th.y - 19, 2.6, 10); c.fillRect(th.x - 5, th.y - 15.3, 10, 2.6); }
+  }
+  for (const k of s.checks) if (k.on) { const l = P ? P.check1.lamp : [0, -31]; dot(k.x + l[0], k.y + l[1], 4.2, '159,246,255', 0.8); }
+  { const g = s.goal, gf = P ? P.goal : null, hw = gf ? gf.w / PROP_ATLAS.ppu / 2 : 13, hh = gf ? gf.h / PROP_ATLAS.ppu : 54; c.fillStyle = 'rgba(127,227,255,0.5)'; c.fillRect(g.x - hw, g.y - hh, 2.6, hh); c.fillRect(g.x + hw - 2.6, g.y - hh, 2.6, hh); c.fillRect(g.x - hw, g.y - hh, hw * 2, 3.2); }
+  for (const q of s.bullets) dot(q.x, q.y, 2.8, '255,225,170', 1);
+  for (const e of s.enemies) if (!e.dead && e.type === 'turret' && e.cool < 26) dot(e.x + e.dir * 14, e.y - 14, 2.5 + (1 - e.cool / 26) * 2, '255,184,77', 1 - e.cool / 26);
+  c.restore();
+}
+function drawBloom(c, s) {
+  const cw = c.canvas.width, ch = c.canvas.height, n = 4;
+  for (let i = 0; i < n; i++) {
+    const w = Math.max(2, Math.ceil(cw / (4 << i))), h = Math.max(2, Math.ceil(ch / (4 << i)));
+    if (!BLOOM.cv[i]) BLOOM.cv[i] = document.createElement('canvas');
+    if (BLOOM.cv[i].width !== w || BLOOM.cv[i].height !== h) { BLOOM.cv[i].width = w; BLOOM.cv[i].height = h; }
+  }
+  const e = BLOOM.cv[0], x = e.getContext('2d'), k = R.K * e.width / cw, keepK = R.K;
+  x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, e.width, e.height);
+  x.setTransform(k, 0, 0, k, -R.cam.x * k, -R.cam.y * k);
+  R.K = k;                                                   // glow radii inside the draw calls are given in device pixels: scale them with the canvas
+  drawEmitters(x, s);
+  x.globalAlpha = TUNE.bloomSaber; for (const a of R.arcs) drawArc(x, a); x.globalAlpha = 1;
+  drawParticles(x, true, TUNE.bloomParts);
+  const p = s.p;
+  if (!p.dead && R.pose && R.pose.atk && R.sprite && HERO.ok) { const h = R.pose, f = HERO_ATLAS.frames[heroFrame(h)]; x.save(); x.globalAlpha = TUNE.bloomSaber; x.translate(h.x, h.y); x.scale(h.face, 1); bladeBlock(x, h, f, 1 / HERO_ATLAS.ppu); x.restore(); }
+  R.K = keepK;
+  for (let i = 1; i < n; i++) { const y = BLOOM.cv[i].getContext('2d'); y.setTransform(1, 0, 0, 1, 0, 0); y.clearRect(0, 0, BLOOM.cv[i].width, BLOOM.cv[i].height); y.imageSmoothingEnabled = true; y.imageSmoothingQuality = 'high'; y.drawImage(BLOOM.cv[i - 1], 0, 0, BLOOM.cv[i].width, BLOOM.cv[i].height); }
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.globalCompositeOperation = 'lighter'; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  const amt = [0, 0.28, 0.34, 0.34];                         // tight halo, mid, wide
+  for (let i = 1; i < n; i++) { c.globalAlpha = amt[i]; c.drawImage(BLOOM.cv[i], 0, 0, cw, ch); }
+  c.restore();
+}
+// ---- floor reflections: whatever stands on a floor is drawn again upside down just under the floor line, in a few fading strips ----
+const SABER_REFLECT = 0;                                    // the blade and the arcs: off for now (Yota: even at the hero's strength, 0.4, they stood out badly)
+const HERO_REFLECT = 0.4;                                   // strength of the hero's own reflection against the others (0 = none)
+function reflect(c, s, x0, x1, y, drawFn, gain) {
+  const L = s.L, row = Math.round(y / T); if (Math.abs(y - row * T) > 0.6) return;                      // only for things standing exactly on a tile top
+  const at = (i, j) => (i < 0 || i >= L.W || j < 0 || j >= L.H) ? 0 : L.t[j * L.W + i], cols = [];
+  for (let i = Math.floor(x0 / T); i <= Math.floor(x1 / T); i++) if (at(i, row) === 1 && at(i, row - 1) !== 1) cols.push(i);
+  if (!cols.length) return;
+  const A = [0.2, 0.13, 0.08, 0.04], hgt = 3.4;
+  for (let k = 0; k < A.length; k++) {
+    c.save(); c.beginPath(); for (const i of cols) c.rect(i * T, y + 0.9 + k * hgt, T + 0.05, hgt); c.clip();
+    c.globalAlpha = A[k] * (gain || 1); c.translate(0, 2 * y + 0.9); c.scale(1, -1); drawFn(); c.restore();
+  }
+}
+function drawReflections(c, s) {
+  const p = s.p;
+  for (const th of s.things) if (R.sprite && PROP.ok && th.x > R.cam.x - 30 && th.x < R.cam.x + R.VW + 30) reflect(c, s, th.x - 16, th.x + 16, th.y, () => drawThingSprite(c, s, th));
+  for (const e of s.enemies) if (!e.dead && R.sprite && FOE.ok && e.x > R.cam.x - 40 && e.x < R.cam.x + R.VW + 40) reflect(c, s, e.x - 22, e.x + 22, e.y, () => drawFoeSprite(c, e, 0));
+  if (R.pose && p.ground && !p.dead) {
+    // The hero is drawn with a pale rim so she reads against the dark stage; mirrored, that rim made her reflection look
+    // heavier and dirtier than the others. So: no rim in the reflection, and under half the strength. The blade and arcs are held to the same strength.
+    R.noRim = true; reflect(c, s, p.x - 30, p.x + 30, p.y, () => drawHero(c, Object.assign({}, R.pose, { atk: null }), null), HERO_REFLECT); R.noRim = false;
+    if (SABER_REFLECT > 0 && (R.pose.atk || R.arcs.length)) reflect(c, s, p.x - 64, p.x + 64, p.y, () => { const h = R.pose; if (h.atk && R.sprite && HERO.ok) { const f = HERO_ATLAS.frames[heroFrame(h)]; c.save(); c.translate(h.x, h.y); c.scale(h.face, 1); bladeBlock(c, h, f, 1 / HERO_ATLAS.ppu); c.restore(); } for (const a of R.arcs) drawArc(c, a); }, SABER_REFLECT);
+  }
+}
+const GRAIN = { cv: null };
+function drawFinish(c) {                                    // in device pixels, over everything: colour wash, vignette, grain
+  const cw = c.canvas.width, ch = c.canvas.height;
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0);
+  const wash = c.createLinearGradient(0, 0, 0, ch); wash.addColorStop(0, 'rgba(40,80,170,0.20)'); wash.addColorStop(0.6, 'rgba(60,90,160,0.06)'); wash.addColorStop(1, 'rgba(130,70,150,0.12)');
+  c.globalCompositeOperation = 'soft-light'; c.fillStyle = wash; c.fillRect(0, 0, cw, ch);
+  c.globalCompositeOperation = 'source-over';
+  const v = c.createRadialGradient(cw / 2, ch * 0.52, Math.min(cw, ch) * 0.42, cw / 2, ch * 0.52, Math.hypot(cw, ch) * 0.62); v.addColorStop(0, 'rgba(2,4,10,0)'); v.addColorStop(1, 'rgba(2,4,10,0.62)');
+  c.fillStyle = v; c.fillRect(0, 0, cw, ch);
+  if (!GRAIN.cv && typeof document !== 'undefined') {
+    const g = document.createElement('canvas'); g.width = g.height = 128; const x = g.getContext('2d'), d = x.createImageData(128, 128);
+    for (let i = 0; i < d.data.length; i += 4) { const n = 128 + (hash(i * 0.37) - 0.5) * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = n; d.data[i + 3] = 255; }
+    x.putImageData(d, 0, 0); GRAIN.cv = g; GRAIN.pat = c.createPattern(g, 'repeat');
+  }
+  if (GRAIN.pat) { c.globalCompositeOperation = 'overlay'; c.globalAlpha = 0.06; c.translate(-((R.t * 37) % 128), -((R.t * 53) % 128)); c.fillStyle = GRAIN.pat; c.fillRect(0, 0, cw + 128, ch + 128); }
+  c.restore();
+}
+function drawLights(c, s) {                                 // additive pools of light on whatever is behind them
+  const p = s.p, pulse = 0.8 + Math.sin(R.t * 0.07) * 0.2;
+  c.save(); c.globalCompositeOperation = 'lighter';
+  for (const th of s.things) {
+    if (th.type === 'term') light(c, th.x, th.y - 26, 62, '80,200,255', (s.near === th ? 0.2 : 0.13) * pulse);
+    else if (th.type === 'switch') light(c, th.x, th.y - 21, 40, th.used ? '110,225,255' : '255,180,80', 0.15 * pulse);
+    else if (!th.used) light(c, th.x, th.y - 14, 52, '110,255,170', 0.15 * pulse);
+  }
+  for (const k of s.checks) if (k.on) light(c, k.x, k.y - 30, 58, '120,225,255', 0.16 * pulse);
+  light(c, s.goal.x, s.goal.y - 26, 90, '120,225,255', 0.16 * pulse);
+  for (const e of s.enemies) if (!e.dead && e.type !== 'dummy') light(c, e.x + (e.dir || 1) * 4, e.y - e.h * 0.6, 26, '255,180,80', 0.10);
+  for (const q of s.bullets) light(c, q.x, q.y, 22, '255,190,100', 0.22);
+  if (!p.dead) {
+    if (p.atk) { const a = ATK[p.atk.id], on = p.atk.f >= a.act[0] - 2 && p.atk.f <= a.act[1] + 4; light(c, p.x + p.face * 14, p.y - 16, a.heavy ? 96 : 74, '110,220,255', on ? TUNE.pool : TUNE.pool * 0.46); }
+    if (p.charge > 12) light(c, p.x, p.y - 16, 46 + Math.min(1, p.charge / C.CHARGE_T) * 26, '140,230,255', 0.10 + Math.min(1, p.charge / C.CHARGE_T) * 0.12);
+  }
+  c.restore();
+}
 function drawBackdrop(c, s) {
-  const g = c.createLinearGradient(0, R.cam.y, 0, R.cam.y + R.VH); g.addColorStop(0, '#0b1324'); g.addColorStop(0.6, '#0a1020'); g.addColorStop(1, '#060a14');
+  const fx = R.fx && R.sprite && SKY.every(k => k.ok);
+  const g = c.createLinearGradient(0, R.cam.y, 0, R.cam.y + R.VH); if (fx) { g.addColorStop(0, '#040814'); g.addColorStop(0.5, '#0a152b'); g.addColorStop(1, '#0d1a36'); } else { g.addColorStop(0, '#0b1324'); g.addColorStop(0.6, '#0a1020'); g.addColorStop(1, '#060a14'); }
   c.fillStyle = g; c.fillRect(R.cam.x - 2, R.cam.y - 2, R.VW + 4, R.VH + 4);
   if (R.sprite && SKY.every(k => k.ok)) {
     // The skyline stands on a line a little below the main floor, and drifts less than the stage when the camera climbs (far layer least).
@@ -252,8 +430,16 @@ function drawBackdrop(c, s) {
     const base = R.VH * 0.72, camRef = s.L.GY * T + 14 - base; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
     for (const k of SKY) {
       const w = k.img.width * k.h / k.img.height, ox = R.cam.x * (1 - k.par), y = R.cam.y + base + (camRef - R.cam.y) * k.par * 0.6 - k.h;
+      if (fx && k === SKY[0]) {                              // glow on the horizon, behind the farthest buildings
+        const yb = y + k.h, hg = c.createLinearGradient(0, yb - 150, 0, yb + 40); hg.addColorStop(0, 'rgba(60,110,210,0)'); hg.addColorStop(0.75, 'rgba(60,110,210,0.26)'); hg.addColorStop(1, 'rgba(60,110,210,0)');
+        c.save(); c.globalCompositeOperation = 'lighter'; c.fillStyle = hg; c.fillRect(R.cam.x - 2, yb - 150, R.VW + 4, 190); c.restore();
+      }
       for (let i = Math.floor((R.cam.x - ox) / w) - 1, x = ox + i * w; x < R.cam.x + R.VW; i++, x = ox + i * w) if (x + w > R.cam.x) {
         c.drawImage(k.img, x, y, w + 0.3, k.h); c.drawImage(k.img, 0, k.img.height - 2, k.img.width, 1, x, y + k.h - 0.3, w + 0.3, R.VH + 300);
+      }
+      if (fx) {                                             // depth fog: the far layer is hazier and bluer than the near one
+        const far = k === SKY[0]; haze(c, y - 10, y + k.h, far ? '52,88,150' : '30,54,98', far ? 0.6 : 0.36);
+        drawMist(c, y + k.h + 6, k.par + 0.08, far ? 0.035 : 0.07, far ? 0.55 : 0.4);
       }
     }
     return;
@@ -452,10 +638,11 @@ function drawEnemies(c, s) {
   for (const q of s.bullets) { c.fillStyle = 'rgba(255,184,77,.45)'; c.fillRect(q.x - (q.vx > 0 ? 9 : 0), q.y - 1, 9, 2); c.fillStyle = '#fff3d6'; c.beginPath(); c.arc(q.x, q.y, 2.6, 0, TAU); c.fill(); }
   c.restore();
 }
-function drawParticles(c) {
+function drawParticles(c, onlyAdd, gain) {
   for (const q of R.parts) {
+    if (onlyAdd && !q.add) continue;                         // the bloom pass takes only the particles that emit light
     const k = q.life / q.max;
-    c.save(); if (q.add) c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(1, k * (q.puff ? 0.5 : 1.3));
+    c.save(); if (q.add) c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(1, k * (q.puff ? 0.5 : 1.3)) * (gain || 1);
     if (q.ring) { c.strokeStyle = q.color; c.lineWidth = 2.2 * k + 0.3; c.beginPath(); c.arc(q.x, q.y, q.size * (1 - k * k) + 2, 0, TAU); c.stroke(); }
     else if (q.star) { c.translate(q.x, q.y); c.rotate(q.rot); c.fillStyle = q.color; for (let i = 0; i < 2; i++) { c.rotate(Math.PI / 2 * i + 0.4 * i); const l = q.size * (1.2 - k * 0.5), w = 1.6 * k + 0.2; c.beginPath(); c.moveTo(-l, 0); c.lineTo(0, -w); c.lineTo(l, 0); c.lineTo(0, w); c.fill(); } }
     else if (q.streak) { c.strokeStyle = q.color; c.lineWidth = q.size; c.beginPath(); c.moveTo(q.x, q.y); c.lineTo(q.x - q.vx * 2.2, q.y - q.vy * 2.2); c.stroke(); }
@@ -467,7 +654,7 @@ function drawParticles(c) {
 R.draw = function (s) {
   const c = R.ctx, p = s.p, sx = (Math.random() - 0.5) * R.shake, sy = (Math.random() - 0.5) * R.shake;
   c.setTransform(R.K, 0, 0, R.K, -(R.cam.x + sx) * R.K, -(R.cam.y + sy) * R.K);
-  drawBackdrop(c, s); drawSigns(c, s); drawTiles(c, s); drawThings(c, s); drawMarkers(c, s); drawEnemies(c, s);
+  drawBackdrop(c, s); if (R.fx) drawMotes(c, 26, 0.7, 11, 1.1, 0.5); drawSigns(c, s); drawTiles(c, s); drawThings(c, s); drawMarkers(c, s); if (R.fx) drawLights(c, s); drawEnemies(c, s);
   for (const g of R.ghosts) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = g.life / 11 * 0.42; drawHero(c, g.pose, '#4fc4ff'); c.restore(); }
   if ((!p.dead || (R.sprite && HERO.ok)) && R.pose) {
     // scarf (line figure only)
@@ -478,7 +665,9 @@ R.draw = function (s) {
     drawHero(c, R.pose, p.charge >= C.CHARGE_T && (R.t >> 2) % 2 === 0 ? '#ffffff' : null); c.restore();
   }
   for (const a of R.arcs) drawArc(c, a);
+  if (R.fx) drawReflections(c, s);
   drawParticles(c);
+  if (R.fx) { drawMotes(c, 12, 1.35, 77, 2.6, 0.2); drawRig(c); if (BLOOM.on && typeof document !== 'undefined') drawBloom(c, s); drawFinish(c); }
   if (R.debug) {
     c.lineWidth = 0.6; c.strokeStyle = '#4dff9a'; c.strokeRect(p.x - C.HW, p.y - C.H, C.HW * 2, C.H);
     if (p.atk) { const a = ATK[p.atk.id], b = Z.attackBox(p); c.strokeStyle = p.atk.f >= a.act[0] && p.atk.f <= a.act[1] ? '#ff5a5a' : 'rgba(255,90,90,.35)'; c.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
