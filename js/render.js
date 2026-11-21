@@ -9,7 +9,7 @@ const COL = { blade: '#9ff6ff', glow: 'rgba(80,215,255,', scarf: '#b06cff', armo
 // Saber sweep per move: start angle, end angle (0 = forward, negative = up), reach.
 const SWEEP = { s1: [-2.2, 0.95, 31], s2: [1.25, -1.95, 34], s3: [-2.75, 1.3, 43], air: [-2.45, 1.35, 37], dash: [-1.0, 0.6, 43], wall: [-2.2, 1.0, 33], charge: [-3.05, 1.5, 53] };
 
-const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null };
+const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true };
 
 R.reset = function (s) {
   R.parts.length = R.arcs.length = R.ghosts.length = 0; R.scarf.length = 0; R.shake = 0; R.lastX = s.p.x;
@@ -31,8 +31,9 @@ R.step = function (s) {
   let kind = 'idle';
   if (p.dead) kind = 'dead'; else if (p.stun > 0) kind = 'hurt'; else if (p.act) kind = 'use'; else if (p.sliding) kind = 'slide';
   else if (p.airDashT > 0) kind = 'dash'; else if (!p.ground) kind = p.vy < 0 ? 'rise' : 'fall'; else if (p.dashT > 0) kind = 'dash'; else if (Math.abs(p.vx) > 0.1) kind = 'run';
-  if (kind === 'run') R.phase += Math.abs(moved) / 24 * TAU; else if (kind !== 'dash') R.phase = 0;   // feet advance with distance: no sliding
-  const pose = { x: p.x, y: p.y, face: p.face, kind, phase: R.phase, t: R.t, vy: p.vy, atk: p.atk ? { id: p.atk.id, f: p.atk.f } : null, charge: p.charge, inv: p.inv, use: p.act ? p.act.f : 0 };
+  if (kind === 'run') R.phase += Math.abs(moved) / 24 * TAU; else if (kind !== 'dash') R.phase = 0;
+  R.runU = kind === 'run' ? (R.runU + Math.abs(moved) / RUN_CYCLE) % 1 : 0; R.deadT = p.dead ? R.deadT + 1 : 0;   // feet advance with distance: no sliding
+  const pose = { x: p.x, y: p.y, face: p.face, kind, phase: R.phase, t: R.t, vy: p.vy, atk: p.atk ? { id: p.atk.id, f: p.atk.f } : null, charge: p.charge, inv: p.inv, use: p.act ? p.act.f : 0, wall: p.wall, runU: R.runU, deadT: R.deadT, adash: p.airDashT > 0 };
   R.pose = pose;
   // saber trail: follow the live sweep, then let it fade where it ended
   const live = R.arcs.find(a => a.live);
@@ -129,7 +130,73 @@ function skeleton(h) {
   return { hipX, hipY, sh, hd, legF, legB, armF: arm(aF, 1), armB: arm(aB, 0.95), blade, lean };
 }
 function limb(c, ax, ay, k, w, col) { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(ax, ay); c.lineTo(k[0], k[1]); c.lineTo(k[2], k[3]); c.stroke(); }
+// ---- hero as sprites (assets/hero.png + js/hero_atlas.js). Falls back to the line figure when missing or switched off ----
+const RUN_CYCLE = 33;                                    // world units per full run cycle (two steps): feet do not slide
+const RUN_CUT = [100, 60, 60, 90, 100, 60, 60, 90].reduce((a, v) => (a.push((a.length ? a[a.length - 1] : 0) + v / 620), a), []);
+const ATK_FRAMES = { s1: ['s1_', [3, 9]], s2: ['s2_', [3, 10]], s3: ['s3_', [6, 10, 13]], charge: ['charge_', [8, 12, 16]], air: ['s3_', [3, 7, 11]], dash: ['datk_', [2]], wall: ['wall_', [3]] };
+const HERO = { img: null, ok: false, tints: {} };
+if (typeof HERO_ATLAS !== 'undefined' && typeof Image !== 'undefined') {
+  HERO.img = new Image(); HERO.img.onload = () => { HERO.ok = true; }; HERO.img.src = 'assets/hero.png';
+}
+R.spriteReady = () => HERO.ok;
+function heroTint(color) {                               // flat-colour copy of the atlas, for afterimages and the charge flash
+  if (!HERO.tints[color]) {
+    const cv = document.createElement('canvas'); cv.width = HERO.img.width; cv.height = HERO.img.height;
+    const x = cv.getContext('2d'); x.drawImage(HERO.img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, cv.width, cv.height);
+    HERO.tints[color] = cv;
+  }
+  return HERO.tints[color];
+}
+function heroFrame(h) {
+  if (h.kind === 'dead') return h.deadT < 16 ? 'dead0' : 'dead1';
+  if (h.kind === 'hurt') return 'hurt';
+  if (h.atk) { const d = ATK_FRAMES[h.atk.id]; let i = 0; while (i < d[1].length && h.atk.f >= d[1][i]) i++; return d[0] + i; }
+  switch (h.kind) {
+    case 'run': { let i = 0; while (i < 7 && h.runU >= RUN_CUT[i]) i++; return 'run' + i; }
+    case 'dash': return h.adash ? 'adash' : 'dash'; case 'rise': return 'rise'; case 'fall': return 'fall'; case 'slide': return 'slide';
+    case 'use': return h.use >= 4 ? 'use' : 'idle0';
+  }
+  return (h.t % 160) < 80 ? 'idle0' : 'idle1';
+}
+function drawHeroSprite(c, h, ghost) {
+  const name = heroFrame(h), f = HERO_ATLAS.frames[name], u = 1 / HERO_ATLAS.ppu;
+  const flip = name === 'slide' && h.wall ? h.wall : h.face;         // the wall-slide picture faces the wall
+  c.save(); c.translate(h.x, h.y); c.scale(flip, 1); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  const flash = ghost === '#ffffff'; if (flash) ghost = null;           // charge flash: the picture, with a white wash over it
+  if (!ghost) {                                                       // pale rim, so the dark suit reads against the dark stage
+    const rim = heroTint('#a9dcff'), o = 0.42, ga = c.globalAlpha; c.globalAlpha = ga * 0.6;
+    for (const d of [[o, 0], [-o, 0], [0, o], [0, -o]]) c.drawImage(rim, f.x, f.y, f.w, f.h, -f.ax * u + d[0], -f.ay * u + d[1], f.w * u, f.h * u);
+    c.globalAlpha = ga;
+  }
+  c.drawImage(ghost ? heroTint(ghost) : HERO.img, f.x, f.y, f.w, f.h, -f.ax * u, -f.ay * u, f.w * u, f.h * u);
+  if (flash) { c.save(); c.globalAlpha *= 0.5; c.drawImage(heroTint('#ffffff'), f.x, f.y, f.w, f.h, -f.ax * u, -f.ay * u, f.w * u, f.h * u); c.restore(); }
+  if (h.atk && f.hx !== undefined && !ghost) {
+    // The blade is drawn as a smear: a fan from the hands that trails behind the swing, plus a glow over the grip.
+    // The pictures hold the hilt at whatever angle the pose needs, so a thin straight blade would look bent at the hand;
+    // the fan and the glow hide the hilt and the hands, and the eye reads one continuous stroke along the leading edge.
+    const sw = sweepAngle(h.atk), prev = sweepAngle({ id: h.atk.id, f: Math.max(0, h.atk.f - 2) }), end = SWEEP[h.atk.id][1];
+    const dir = end >= sw.from ? 1 : -1, len = sw.reach - 5, ox = (f.hx - f.ax) * u, oy = (f.hy - f.ay) * u;
+    const width = 0.26 + clamp(Math.abs(sw.ang - prev.ang) * 1.1, 0, 0.55), n = 14;
+    c.globalCompositeOperation = 'lighter'; c.lineCap = 'round'; c.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {                                     // trailing edge (faint) to leading edge (bright)
+      const a0 = sw.ang - dir * width * (1 - i / n), a1 = sw.ang - dir * width * (1 - (i + 1) / n), k = (i + 1) / n;
+      const bx = -Math.sin(sw.ang) * 1.6, by = Math.cos(sw.ang) * 1.6;   // the fan starts as wide as the hands
+      c.fillStyle = COL.glow + (0.05 + 0.5 * k * k * k).toFixed(3) + ')';
+      c.beginPath(); c.moveTo(ox - bx, oy - by); c.lineTo(ox + Math.cos(a0) * len, oy + Math.sin(a0) * len); c.lineTo(ox + Math.cos(a1) * len, oy + Math.sin(a1) * len); c.lineTo(ox + bx, oy + by); c.fill();
+    }
+    const tx = ox + Math.cos(sw.ang) * len, ty = oy + Math.sin(sw.ang) * len;
+    c.shadowColor = COL.blade; c.shadowBlur = 8 * R.K;
+    c.strokeStyle = COL.glow + '0.8)'; c.lineWidth = 3.6; c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.stroke();
+    c.strokeStyle = '#ffffff'; c.lineWidth = 1.7; c.beginPath(); c.moveTo(ox, oy); c.lineTo(tx, ty); c.stroke();
+    c.shadowBlur = 0;
+    const g = c.createRadialGradient(ox, oy, 0, ox, oy, 5.2);         // glow over the grip: hides the hilt and the hands
+    g.addColorStop(0, 'rgba(255,255,255,0.95)'); g.addColorStop(0.35, COL.glow + '0.75)'); g.addColorStop(1, COL.glow + '0)');
+    c.fillStyle = g; c.beginPath(); c.arc(ox, oy, 5.2, 0, TAU); c.fill();
+  }
+  c.restore();
+}
 function drawHero(c, h, ghost) {
+  if (R.sprite && HERO.ok) return drawHeroSprite(c, h, ghost);
   const sk = skeleton(h);
   c.save(); c.translate(h.x, h.y); c.scale(h.face, 1); c.lineCap = 'round'; c.lineJoin = 'round';
   const front = ghost || COL.armor, back = ghost || COL.armorBack;
@@ -311,10 +378,10 @@ R.draw = function (s) {
   c.setTransform(R.K, 0, 0, R.K, -(R.cam.x + sx) * R.K, -(R.cam.y + sy) * R.K);
   drawBackdrop(c, s); drawSigns(c, s); drawTiles(c, s); drawThings(c, s); drawMarkers(c, s); drawEnemies(c, s);
   for (const g of R.ghosts) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = g.life / 11 * 0.42; drawHero(c, g.pose, '#4fc4ff'); c.restore(); }
-  if (!p.dead && R.pose) {
-    // scarf
+  if ((!p.dead || (R.sprite && HERO.ok)) && R.pose) {
+    // scarf (line figure only)
     c.save(); c.lineCap = 'round';
-    for (let i = 1; i < R.scarf.length; i++) { c.strokeStyle = i < 5 ? COL.scarf : '#d2a8ff'; c.lineWidth = 2.6 - i * 0.24; c.beginPath(); c.moveTo(R.scarf[i - 1].x, R.scarf[i - 1].y); c.lineTo(R.scarf[i].x, R.scarf[i].y); c.stroke(); }
+    if (!(R.sprite && HERO.ok)) for (let i = 1; i < R.scarf.length; i++) { c.strokeStyle = i < 5 ? COL.scarf : '#d2a8ff'; c.lineWidth = 2.6 - i * 0.24; c.beginPath(); c.moveTo(R.scarf[i - 1].x, R.scarf[i - 1].y); c.lineTo(R.scarf[i].x, R.scarf[i].y); c.stroke(); }
     c.restore();
     c.save(); if (p.inv > 0 && p.stun <= 0 && (R.t >> 1) % 2 === 0) c.globalAlpha = 0.35;
     drawHero(c, R.pose, p.charge >= C.CHARGE_T && (R.t >> 2) % 2 === 0 ? '#ffffff' : null); c.restore();
