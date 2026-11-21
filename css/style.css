@@ -95,3 +95,5 @@ kbd{font:700 10px ui-monospace,Menlo,monospace;background:rgba(150,200,240,.14);
 @keyframes blink{50%{opacity:.35}}
 .frame.band-mode .talk{bottom:auto;top:calc(var(--band-h) + 14px)}
 @media (max-height:460px){.talk{padding:10px 16px 8px}.talk p{font-size:14px;line-height:1.7;margin:5px 0 4px}}
+.vol{display:grid;grid-template-columns:5em 1fr 2.4em;align-items:center;gap:10px;min-height:40px;padding:4px 14px;font-size:12px;letter-spacing:.14em;border:1px solid rgba(127,160,200,.35);background:rgba(12,24,44,.6)}
+.vol input{width:100%;accent-color:var(--cy);touch-action:pan-x}.vol b{text-align:right;font-weight:400;font-variant-numeric:tabular-nums}

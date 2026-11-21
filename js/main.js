@@ -120,36 +120,10 @@ function readInput() {
   return inp;
 }
 
-// ---- sound: short synthesized effects, no files ----
-let ac = null, master = null, seOn = true;
-function audioStart() { if (ac) { if (ac.state === 'suspended') ac.resume(); return; } try { ac = new (window.AudioContext || window.webkitAudioContext)(); master = ac.createGain(); master.gain.value = 0.5; master.connect(ac.destination); } catch (_) { ac = null; } }
-function tone(type, f0, f1, dur, vol, delay) { const t = ac.currentTime + (delay || 0), o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02); }
-let noiseBuf = null;
-function noise(f0, f1, dur, vol, q) { if (!noiseBuf) { noiseBuf = ac.createBuffer(1, ac.sampleRate * 0.5, ac.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
-  const t = ac.currentTime, s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noiseBuf; f.type = 'bandpass'; f.Q.value = q || 1.2; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); s.connect(f).connect(g).connect(master); s.start(t); s.stop(t + dur + 0.02); }
-function sfx(e) {
-  if (!ac || !seOn) return;
-  switch (e.t) {
-    case 'slash': { const heavy = e.id === 's3' || e.id === 'charge'; noise(heavy ? 2600 : 3400, heavy ? 500 : 900, heavy ? 0.2 : 0.11, heavy ? 0.5 : 0.36, 1.4); if (e.id === 'charge') tone('sawtooth', 220, 60, 0.25, 0.25); break; }
-    case 'hit': noise(1800, 300, 0.09, 0.5, 0.8); tone('square', e.heavy ? 150 : 240, e.heavy ? 50 : 110, e.heavy ? 0.16 : 0.08, 0.22); break;
-    case 'kill': noise(900, 120, 0.3, 0.5, 0.7); tone('triangle', 200, 40, 0.3, 0.3); break;
-    case 'cut': tone('square', 900, 400, 0.05, 0.14); break;
-    case 'jump': tone('sine', 400, 660, 0.09, 0.2); break;
-    case 'kick': tone('sine', 520, 820, 0.08, 0.2); noise(1200, 500, 0.05, 0.18); break;
-    case 'dash': noise(700, 2200, 0.16, 0.3, 0.9); break;
-    case 'airdash': noise(1100, 3200, 0.14, 0.3, 1.1); tone('sine', 500, 900, 0.08, 0.1); break;
-    case 'land': tone('sine', 110, 60, 0.06, 0.3); break;
-    case 'hurt': tone('sawtooth', 320, 70, 0.26, 0.3); break;
-    case 'die': tone('sawtooth', 400, 40, 0.6, 0.32); noise(1500, 100, 0.5, 0.4); break;
-    case 'charged': tone('sine', 880, 1320, 0.14, 0.22); tone('sine', 1320, 1760, 0.16, 0.14, 0.05); break;
-    case 'check': tone('sine', 660, 660, 0.1, 0.2); tone('sine', 990, 990, 0.16, 0.2, 0.1); break;
-    case 'shot': tone('square', 300, 180, 0.08, 0.12); break;
-    case 'talk': tone('sine', 880, 1100, 0.07, 0.16); break;
-    case 'heal': [660, 880, 1320].forEach((f, i) => tone('sine', f, f, 0.14, 0.18, i * 0.06)); break;
-    case 'switch': tone('square', 180, 90, 0.1, 0.2); noise(300, 90, 0.6, 0.35, 0.6); break;
-    case 'clear': [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f, 0.22, 0.24, i * 0.11)); break;
-  }
-}
+// ---- sound: js/audio.js (synthesized effects and music, no files) ----
+const AU = window.ZankoAudio;
+function audioStart() { AU.start(); AU.setPlay(mode === 'play'); }
+function sfx(e) { AU.event(e); }
 
 // ---- modes and menus ----
 function setMode(m) {
@@ -157,6 +131,7 @@ function setMode(m) {
   for (const id of ['title', 'pause', 'clear']) $(id).classList.toggle('show', id === m);
   $('talk').classList.toggle('show', m === 'talk'); if (m !== 'play') promptEl.classList.remove('show');
   if (m !== 'play') releaseAll(); else { last = 0; acc = 0; measureButtons(); }
+  AU.setPlay(m === 'play' || m === 'talk');
 }
 function fullscreenEl() { return document.fullscreenElement || document.webkitFullscreenElement; }
 function toggleFullscreen() { try { if (fullscreenEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; } const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen; if (!fn) return; const r = fn.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (_) {} }
@@ -168,8 +143,9 @@ $('pauseBtn').addEventListener('click', () => { if (mode === 'play') setMode('pa
 $('resumeBtn').addEventListener('click', () => setMode('play'));
 $('retryBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('againBtn').addEventListener('click', () => { restart(); setMode('play'); });
-$('seBtn').addEventListener('click', () => { seOn = !seOn; $('seBtn').textContent = '効果音：' + (seOn ? 'ON' : 'OFF'); });
+for (const k of ['bgm', 'se']) { const el = $(k + 'Vol'), out = $(k + 'VolV'); el.value = AU.vol[k]; out.textContent = AU.vol[k]; el.addEventListener('input', () => { AU.setVol(k, el.value); out.textContent = el.value; }); }
 $('boxBtn').addEventListener('click', toggleBoxes);
+$('gradeBtn').addEventListener('click', () => { R.grade = !R.grade; $('gradeBtn').textContent = '色調整（LUT・トーン）：' + (R.grade ? 'ON' : 'OFF'); });
 $('postBtn').addEventListener('click', () => { R.post = !R.post; $('postBtn').textContent = 'シェーダー効果（歪み・ブレ・色ずれ）：' + (R.post ? 'ON' : 'OFF'); });
 $('fxBtn').addEventListener('click', () => { R.fx = !R.fx; $('fxBtn').textContent = '空気感：' + (R.fx ? 'ON' : 'OFF'); });
 $('spriteBtn').addEventListener('click', () => { R.sprite = !R.sprite; $('spriteBtn').textContent = '絵の表示：' + (R.sprite ? 'ON' : 'OFF'); });
@@ -177,7 +153,7 @@ $('airBtn').addEventListener('click', () => { C.AIR_DASH = !C.AIR_DASH; $('airBt
 $('carryBtn').addEventListener('click', () => { C.KICK_CARRY = !C.KICK_CARRY; $('carryBtn').textContent = '壁蹴りのダッシュ維持：' + (C.KICK_CARRY ? 'ON' : 'OFF'); });
 if (document.fullscreenEnabled || document.webkitFullscreenEnabled) { $('fsBtn').hidden = false; $('fsBtn').addEventListener('click', toggleFullscreen); }
 addEventListener('blur', () => { if (mode === 'play') setMode('pause'); else releaseAll(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') setMode('pause'); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && mode === 'play') setMode('pause'); AU.hidden(document.hidden); });
 
 // ---- examine prompt (floats over the thing; also the touch target) and the text panel ----
 const promptEl = $('prompt'), VERB = { term: '調べる', switch: '動かす', heal: '使う' };
@@ -196,11 +172,11 @@ function openTalk(th) { talk.pages = th.pages; talk.i = 0; $('talkTitle').textCo
 function talkPage() { talk.text = talk.pages[talk.i]; talk.shown = 0; $('talkText').textContent = ''; $('talkMore').textContent = talk.i < talk.pages.length - 1 ? '▼ 次へ' : '■ 閉じる'; $('talkMore').classList.remove('ready'); }
 function talkNext() {
   if (talk.shown < talk.text.length) { talk.shown = talk.text.length; $('talkText').textContent = talk.text; $('talkMore').classList.add('ready'); return; }   // first press: show the whole page
-  if (++talk.i < talk.pages.length) { talkPage(); if (ac && seOn) tone('sine', 700, 700, 0.05, 0.12); } else talkClose();
+  if (++talk.i < talk.pages.length) { talkPage(); sfx({ t: 'page' }); } else talkClose();
 }
 let talkClosedAt = 0;
 function talkClose() { talkClosedAt = performance.now(); setMode('play'); }
-function talkTick() { if (talk.shown < talk.text.length) { talk.shown = Math.min(talk.text.length, talk.shown + 1); $('talkText').textContent = talk.text.slice(0, talk.shown); if (talk.shown === talk.text.length) $('talkMore').classList.add('ready'); else if (ac && seOn && talk.shown % 3 === 0) tone('square', 1500, 1500, 0.012, 0.03); } }
+function talkTick() { if (talk.shown < talk.text.length) { talk.shown = Math.min(talk.text.length, talk.shown + 1); $('talkText').textContent = talk.text.slice(0, talk.shown); if (talk.shown === talk.text.length) $('talkMore').classList.add('ready'); else if (talk.shown % 3 === 0) sfx({ t: 'type' }); } }
 
 // ---- gamepad outside play: any face button turns the page, Options pauses and resumes ----
 let padPrev = {}, padWait = false;

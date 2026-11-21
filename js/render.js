@@ -9,7 +9,7 @@ const COL = { blade: '#9ff6ff', glow: 'rgba(80,215,255,', scarf: '#b06cff', armo
 // Saber sweep per move: start angle, end angle (0 = forward, negative = up), reach.
 const SWEEP = { s1: [-2.2, 0.95, 31], s2: [1.25, -1.95, 34], s3: [-2.75, 1.3, 43], air: [-2.45, 1.35, 37], dash: [-1.0, 0.6, 43], wall: [-2.2, 1.0, 33], charge: [-3.05, 1.5, 53] };
 
-const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true, fx: true, post: true, waves: [], rb: 0, hurtFx: 0 };
+const R = { ctx: null, VW: 426, VH: 240, K: 1, css: 1, cam: { x: 0, y: 0 }, shake: 0, parts: [], arcs: [], ghosts: [], scarf: [], phase: 0, lastX: 0, t: 0, debug: false, pose: null, runU: 0, deadT: 0, sprite: true, fx: true, post: true, grade: true, waves: [], rb: 0, hurtFx: 0 };
 
 R.reset = function (s) {
   R.parts.length = R.arcs.length = R.ghosts.length = 0; R.scarf.length = 0; R.shake = 0; R.waves.length = 0; R.rb = 0; R.hurtFx = 0; R.lastX = s.p.x;
@@ -394,7 +394,7 @@ function drawReflections(c, s) {
 // The WebGL canvas is only shown while a wave is alive, so there is no per-frame cost the rest of the time.
 const POST = { gl: null, cv: null, fail: false, shown: false };
 const POST_FS = `precision mediump float;
-uniform sampler2D t; uniform vec2 res; uniform vec4 w[4]; uniform float a[4]; uniform vec4 h[3]; uniform float hs[3]; uniform float tm; uniform float k; uniform vec2 ctr; uniform float rb; uniform float ca;
+uniform sampler2D t; uniform vec2 res; uniform vec4 w[4]; uniform float a[4]; uniform vec4 h[3]; uniform float hs[3]; uniform float tm; uniform float k; uniform vec2 ctr; uniform float rb; uniform float ca; uniform sampler2D lut; uniform float lutS; uniform float tmS; uniform float tmE;
 void main(){
   vec2 px = gl_FragCoord.xy, off = vec2(0.0);
   for (int i = 0; i < 4; i++) {
@@ -415,6 +415,17 @@ void main(){
     for (int i = 1; i < 5; i++) col += texture2D(t, uv - d * far * float(i) * 0.25).rgb;
     col *= 0.2;
   }
+  if (tmS > 0.0) {                                                // tone curve (the ACES fit): deeper toe, lifted mids, a soft shoulder. White stays white
+    vec3 l = pow(col, vec3(2.2)) * tmE, m = (l * (2.51 * l + 0.03)) / (l * (2.43 * l + 0.59) + 0.14);
+    float wn = (tmE * (2.51 * tmE + 0.03)) / (tmE * (2.43 * tmE + 0.59) + 0.14);
+    col = mix(col, pow(clamp(m / wn, 0.0, 1.0), vec3(1.0 / 2.2)), tmS);
+  }
+  if (lutS > 0.0) {                                               // colour look-up: a 256x16 strip, 16 tiles by blue
+    float b = clamp(col.b, 0.0, 1.0) * 15.0, b0 = floor(b), b1 = min(b0 + 1.0, 15.0);
+    vec2 rg = vec2((clamp(col.r, 0.0, 1.0) * 15.0 + 0.5) / 256.0, 1.0 - (clamp(col.g, 0.0, 1.0) * 15.0 + 0.5) / 16.0);
+    vec3 g = mix(texture2D(lut, rg + vec2(b0 / 16.0, 0.0)).rgb, texture2D(lut, rg + vec2(b1 / 16.0, 0.0)).rgb, b - b0);
+    col = mix(col, g, lutS);
+  }
   gl_FragColor = vec4(col, 1.0);
 }`;
 function postInit(src) {
@@ -430,16 +441,21 @@ function postInit(src) {
     const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    POST.u = { res: gl.getUniformLocation(pr, 'res'), w: gl.getUniformLocation(pr, 'w'), a: gl.getUniformLocation(pr, 'a'), h: gl.getUniformLocation(pr, 'h'), hs: gl.getUniformLocation(pr, 'hs'), tm: gl.getUniformLocation(pr, 'tm'), k: gl.getUniformLocation(pr, 'k'), ctr: gl.getUniformLocation(pr, 'ctr'), rb: gl.getUniformLocation(pr, 'rb'), ca: gl.getUniformLocation(pr, 'ca') };
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true); gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    POST.tex = tex; POST.lutTex = gl.createTexture(); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, POST.lutTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0); gl.uniform1i(gl.getUniformLocation(pr, 't'), 0); gl.uniform1i(gl.getUniformLocation(pr, 'lut'), 1);
+    POST.u = { res: gl.getUniformLocation(pr, 'res'), w: gl.getUniformLocation(pr, 'w'), a: gl.getUniformLocation(pr, 'a'), h: gl.getUniformLocation(pr, 'h'), hs: gl.getUniformLocation(pr, 'hs'), tm: gl.getUniformLocation(pr, 'tm'), k: gl.getUniformLocation(pr, 'k'), ctr: gl.getUniformLocation(pr, 'ctr'), rb: gl.getUniformLocation(pr, 'rb'), ca: gl.getUniformLocation(pr, 'ca'), lut: gl.getUniformLocation(pr, 'lut'), lutS: gl.getUniformLocation(pr, 'lutS'), tmS: gl.getUniformLocation(pr, 'tmS'), tmE: gl.getUniformLocation(pr, 'tmE') };
     cv.addEventListener('webglcontextlost', e => { e.preventDefault(); POST.fail = true; cv.style.display = 'none'; });
     src.parentNode.insertBefore(cv, src.nextSibling); POST.cv = cv; POST.gl = gl;
   } catch (err) { POST.fail = true; POST.err = String(err); }
   return !!POST.gl;
 }
 function postShow(on) { if (POST.cv && POST.shown !== on) { POST.cv.style.display = on ? 'block' : 'none'; POST.shown = on; } }
-const POSTFX = { dash: 0.018, hurt: 2.4, hurtT: 10 };          // dash: smear length at the far edge, as a share of the distance to the hero. hurt: colour split in game units, and how many steps it lasts
+const POSTFX = { dash: 0.018, hurt: 2.4, hurtT: 10, lut: 1, tone: 0.5, exposure: 1.25 };   // lut / tone: 0 = off, 1 = full. exposure: where on the tone curve the picture sits          // dash: smear length at the far edge, as a share of the distance to the hero. hurt: colour split in game units, and how many steps it lasts
 R.postfx = POSTFX;
+const LUT = { img: null, ok: false, sent: false };            // assets/lut.png, made by tools/lut.py (or by hand: see that file)
+if (typeof Image !== 'undefined') { LUT.img = new Image(); LUT.img.onload = () => { LUT.ok = LUT.img.width === 256 && LUT.img.height === 16; }; LUT.img.src = 'assets/lut.png'; }
 const HEAT = { L: null, runs: [], spikes: 0, charge: 0.4 };   // strengths in game units of wobble. Spikes: off (Yota: hard to see, not worth it); set above 0 to bring it back
 function heatZones(s) {                                          // [x0, bottom, x1, height, strength] in world units, only those in view
   if (HEAT.L !== s.L) { HEAT.L = s.L; HEAT.runs = []; const L = s.L;
@@ -450,12 +466,15 @@ function heatZones(s) {                                          // [x0, bottom,
 }
 R.heat = HEAT;
 function drawPost(c, s) {
-  const live = R.waves.filter(q => q.life > 0), hot = R.fx && R.post ? heatZones(s) : [];
-  const blur = R.rb > 0.03 ? R.rb : 0;
-  if (!R.fx || !R.post || !(live.length || hot.length || blur || R.hurtFx > 0) || typeof document === 'undefined' || !postInit(c.canvas) || POST.fail) { postShow(false); return; }
+  const live = R.post ? R.waves.filter(q => q.life > 0) : [], hot = R.fx && R.post ? heatZones(s) : [];
+  const blur = R.post && R.rb > 0.03 ? R.rb : 0, hurt = R.post ? R.hurtFx : 0;
+  const grade = R.grade && (POSTFX.tone > 0 || (POSTFX.lut > 0 && LUT.ok));   // the grade runs every frame; the other effects only while they show
+  if (!R.fx || !(R.post ? (live.length || hot.length || blur || hurt > 0 || grade) : grade) || typeof document === 'undefined' || !postInit(c.canvas) || POST.fail) { postShow(false); return; }
   const gl = POST.gl, cv = POST.cv, cw = c.canvas.width, ch = c.canvas.height;
   if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
   gl.viewport(0, 0, cw, ch);
+  if (LUT.ok && !LUT.sent) { LUT.sent = true; gl.activeTexture(gl.TEXTURE1); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, LUT.img); gl.activeTexture(gl.TEXTURE0); }
+  gl.uniform1f(POST.u.lutS, grade && LUT.sent ? POSTFX.lut : 0); gl.uniform1f(POST.u.tmS, grade ? POSTFX.tone : 0); gl.uniform1f(POST.u.tmE, POSTFX.exposure);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, c.canvas);
   if (!POST.checked) { POST.checked = true; if (gl.getError() !== gl.NO_ERROR) { POST.fail = true; POST.err = 'upload'; postShow(false); return; } }
   const w = new Float32Array(16), a = new Float32Array(4);
@@ -464,7 +483,7 @@ function drawPost(c, s) {
   const hz = new Float32Array(12), hst = new Float32Array(3);
   hot.forEach((z, i) => { hz[i * 4] = (z[0] - R.cam.x) * R.K; hz[i * 4 + 1] = ch - (z[1] - R.cam.y) * R.K; hz[i * 4 + 2] = (z[2] - R.cam.x) * R.K; hz[i * 4 + 3] = z[3] * R.K; hst[i] = z[4]; });
   gl.uniform4fv(POST.u.h, hz); gl.uniform1fv(POST.u.hs, hst); gl.uniform1f(POST.u.tm, R.t % 100000); gl.uniform1f(POST.u.k, R.K);
-  gl.uniform2f(POST.u.ctr, (s.p.x - R.cam.x) * R.K, ch - (s.p.y - 14 - R.cam.y) * R.K); gl.uniform1f(POST.u.rb, blur * POSTFX.dash); gl.uniform1f(POST.u.ca, R.hurtFx / POSTFX.hurtT * POSTFX.hurt * R.K);
+  gl.uniform2f(POST.u.ctr, (s.p.x - R.cam.x) * R.K, ch - (s.p.y - 14 - R.cam.y) * R.K); gl.uniform1f(POST.u.rb, blur * POSTFX.dash); gl.uniform1f(POST.u.ca, hurt / POSTFX.hurtT * POSTFX.hurt * R.K);
   gl.uniform2f(POST.u.res, cw, ch); gl.uniform4fv(POST.u.w, w); gl.uniform1fv(POST.u.a, a);
   gl.drawArrays(gl.TRIANGLES, 0, 3); postShow(true);
 }
