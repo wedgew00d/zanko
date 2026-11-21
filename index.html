@@ -12,7 +12,7 @@
 <main class="frame" id="frame" data-mode="title">
  <div class="band" id="band">
   <canvas id="game" width="960" height="540" aria-label="横スクロールの剣戟アクション"></canvas>
-  <div class="hud" id="hud">
+  <div class="hud" id="hud"><div class="note" id="note"></div>
    <div class="life"><span class="tag">LIFE</span><div class="cells" id="cells"></div></div>
    <div class="hud-right">
     <div class="timer"><span class="tag">TIME</span><b id="time">0:00.0</b><span class="tag miss">MISS <i id="deaths">0</i></span></div>
@@ -34,9 +34,10 @@
 
  <div class="overlay show" id="title">
   <div class="panel wide">
-   <div class="micro">ACTION PROTOTYPE / 仮題 / v0.5.1</div>
+   <div class="micro">ACTION PROTOTYPE / 仮題 / v0.5.2</div>
    <h1>残光 <small>ZANKO</small></h1>
    <p class="lead">ダッシュ、壁蹴り、三段斬り。操作の手触りを確かめるための練習ステージ。</p>
+   <p class="inapp" id="inapp" hidden>アプリ内ブラウザでは動作が重くなることがあります。Chrome や Safari で開くと軽くなります。</p>
    <table class="keys for-key">
     <tr><th>おすすめ</th><td colspan="3"><kbd>A</kbd><kbd>D</kbd> 移動（同じ方向を2度押しでダッシュ。押している間は走り続ける）<br><kbd>マウス左</kbd> 斬る　<kbd>マウス右</kbd> ジャンプ、空中でもう一度押すとエアダッシュ　<kbd>Space</kbd> ジャンプ</td></tr>
     <tr><th>キーのみ</th><td colspan="3"><kbd>A</kbd><kbd>D</kbd> ＋ <kbd>J</kbd> 斬る <kbd>K</kbd> ジャンプ <kbd>L</kbd> ダッシュ　／　<kbd>←</kbd><kbd>→</kbd> ＋ <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd></td></tr>

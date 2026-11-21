@@ -97,3 +97,6 @@ kbd{font:700 10px ui-monospace,Menlo,monospace;background:rgba(150,200,240,.14);
 @media (max-height:460px){.talk{padding:10px 16px 8px}.talk p{font-size:14px;line-height:1.7;margin:5px 0 4px}}
 .vol{display:grid;grid-template-columns:5em 1fr 2.4em;align-items:center;gap:10px;min-height:40px;padding:4px 14px;font-size:12px;letter-spacing:.14em;border:1px solid rgba(127,160,200,.35);background:rgba(12,24,44,.6)}
 .vol input{width:100%;accent-color:var(--cy);touch-action:pan-x}.vol b{text-align:right;font-weight:400;font-variant-numeric:tabular-nums}
+.inapp{margin:-6px 0 16px;padding:10px 12px;font-size:12px;line-height:1.7;color:#ffd9a0;border:1px solid rgba(255,184,77,.5);background:rgba(60,40,10,.45)}.inapp[hidden]{display:none}
+.inapp a{display:inline-block;margin-left:10px;color:var(--cy);text-decoration:underline}
+.note{position:absolute;left:50%;bottom:14%;transform:translateX(-50%);max-width:86%;padding:8px 14px;font-size:12px;line-height:1.6;color:#dff6ff;background:rgba(8,16,30,.88);border:1px solid rgba(127,227,255,.4);opacity:0;transition:opacity .3s;pointer-events:none}.note.show{opacity:1}

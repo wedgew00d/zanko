@@ -15,6 +15,23 @@ try { const v = localStorage.getItem('zanko.qual'); if (v !== null && QUAL[+v]) 
 function qualLabel() { $('qualBtn').textContent = '描画の解像度：' + QUAL[qual].name + (qualAuto ? '（自動で下げた）' : '') + '　' + canvas.width + '×' + canvas.height + (playFps ? '・' + playFps + 'fps' : ''); }
 function setQual(q, auto) { qual = q; qualAuto = !!auto; slow = 0; if (!auto) try { localStorage.setItem('zanko.qual', String(q)); } catch (_) {} layout(); qualLabel(); }
 
+// Touch devices that cannot keep up get lighter by themselves, one step at a time (never heavier again by themselves; every step can be undone in the menu):
+// resolution down a step -> colour grading off (the only pass that runs every frame) -> all of the atmosphere off.
+// Under 30 fps for 2 seconds (in-app browsers such as LINE's, which seem to draw without the GPU): straight to the lightest setting.
+let crawl = 0, noteT = 0;
+function note(text) { const el = $('note'); el.textContent = text; el.classList.add('show'); clearTimeout(noteT); noteT = setTimeout(() => el.classList.remove('show'), 4500); }
+function fxLabels() { $('fxBtn').textContent = '空気感：' + (R.fx ? 'ON' : 'OFF'); $('gradeBtn').textContent = '色調整（LUT・トーン）：' + (R.grade ? 'ON' : 'OFF'); }
+function lighten() {
+  if (crawl >= 4 && (R.fx || qual < QUAL.length - 1)) { R.fx = false; fxLabels(); setQual(QUAL.length - 1, true); crawl = 0; note('動作が重いため、空気感を切り、解像度を下げました（メニューで戻せます）'); return; }
+  if (slow < 6) return;
+  if (qual < QUAL.length - 1) { setQual(qual + 1, true); note('動作が重いため、描画の解像度を下げました（メニューで戻せます）'); }
+  else if (R.fx && R.grade) { R.grade = false; fxLabels(); slow = 0; note('動作が重いため、色調整を切りました（メニューで戻せます）'); }
+  else if (R.fx) { R.fx = false; fxLabels(); slow = 0; note('動作が重いため、空気感を切りました（メニューで戻せます）'); }
+}
+// In-app browsers of chat and social apps (not the Claude app, where this runs well). LINE opens a link in the real browser when the address carries openExternalBrowser=1.
+const inApp = /\bLine\/|FBAN|FBAV|Instagram/i.test(navigator.userAgent), inLine = /\bLine\//i.test(navigator.userAgent);
+if (inApp) { const el = $('inapp'); el.hidden = false; if (inLine) { const u = new URL(location.href); u.searchParams.set('openExternalBrowser', '1'); const a = document.createElement('a'); a.href = u.href; a.textContent = '外部ブラウザで開く'; el.appendChild(a); } }
+
 // ---- layout: the view is 204 to 240 world rows tall (closer on short screens); its width follows the window ----
 function layout() {
   const fw = frame.clientWidth, fh = frame.clientHeight; if (!fw || !fh) return;
@@ -139,7 +156,7 @@ function setMode(m) {
   for (const id of ['title', 'pause', 'clear']) $(id).classList.toggle('show', id === m);
   $('talk').classList.toggle('show', m === 'talk'); if (m !== 'play') promptEl.classList.remove('show');
   if (m !== 'play') releaseAll(); else { last = 0; acc = 0; measureButtons(); }
-  AU.setPlay(m === 'play' || m === 'talk'); slow = 0; if (m === 'pause') qualLabel();
+  AU.setPlay(m === 'play' || m === 'talk'); slow = 0; crawl = 0; if (m === 'pause') qualLabel();
 }
 function fullscreenEl() { return document.fullscreenElement || document.webkitFullscreenElement; }
 function toggleFullscreen() { try { if (fullscreenEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; } const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen; if (!fn) return; const r = fn.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (_) {} }
@@ -232,7 +249,7 @@ function tick(ts) {
   R.draw(sim); hud(); placePrompt();
   fpsN++; if (ts - fpsAt > 500) { fps = Math.round(fpsN * 1000 / (ts - fpsAt)); fpsN = 0; fpsAt = ts;
     // touch devices: 3 seconds under 48 fps while playing -> one step down in resolution (never back up by itself; the menu shows it and can undo it)
-    if (mode === 'play') { playFps = fps; slow = fps < 48 ? slow + 1 : 0; if (isTouch && slow >= 6 && qual < QUAL.length - 1) setQual(qual + 1, true); }
+    if (mode === 'play') { playFps = fps; slow = fps < 48 ? slow + 1 : 0; crawl = fps < 30 ? crawl + 1 : 0; if (isTouch) lighten(); }
     if (!$('debug').hidden) { const p = sim.p; $('debug').textContent = fps + ' fps  view ' + Math.round(R.VW) + 'x' + Math.round(R.VH) + '  canvas ' + canvas.width + 'x' + canvas.height + '\n' + (R.pose ? R.pose.kind : '-') + '  x ' + p.x.toFixed(1) + '  y ' + p.y.toFixed(1) + '  vx ' + p.vx.toFixed(2) + '  vy ' + p.vy.toFixed(2) + '\ndash ' + p.dashT + '  airFast ' + p.airFast + '  wall ' + p.wall + '  atk ' + (p.atk ? p.atk.id + ':' + p.atk.f : '-') + '  charge ' + p.charge; } }
 }
 document.body.classList.toggle('touch', isTouch);
