@@ -240,9 +240,24 @@ function drawArc(c, a) {
 
 // ---- world ----
 function hash(n) { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); }
+// distant skyline: two pictures that repeat sideways (their left and right ends are empty sky, so no seam shows)
+const SKY = [{ src: 'assets/bg_far.png', par: 0.2, h: 150 }, { src: 'assets/bg_near.png', par: 0.45, h: 118 }];
+if (typeof Image !== 'undefined') for (const k of SKY) { k.img = new Image(); k.img.onload = () => { k.ok = true; }; k.img.onerror = () => {}; k.img.src = k.src; }
 function drawBackdrop(c, s) {
   const g = c.createLinearGradient(0, R.cam.y, 0, R.cam.y + R.VH); g.addColorStop(0, '#0b1324'); g.addColorStop(0.6, '#0a1020'); g.addColorStop(1, '#060a14');
   c.fillStyle = g; c.fillRect(R.cam.x - 2, R.cam.y - 2, R.VW + 4, R.VH + 4);
+  if (R.sprite && SKY.every(k => k.ok)) {
+    // The skyline stands on a line a little below the main floor, and drifts less than the stage when the camera climbs (far layer least).
+    // Below the picture, its bottom row is stretched down, so buildings do not end in mid-air where a pit shows what is behind the floor.
+    const base = R.VH * 0.72, camRef = s.L.GY * T + 14 - base; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+    for (const k of SKY) {
+      const w = k.img.width * k.h / k.img.height, ox = R.cam.x * (1 - k.par), y = R.cam.y + base + (camRef - R.cam.y) * k.par * 0.6 - k.h;
+      for (let i = Math.floor((R.cam.x - ox) / w) - 1, x = ox + i * w; x < R.cam.x + R.VW; i++, x = ox + i * w) if (x + w > R.cam.x) {
+        c.drawImage(k.img, x, y, w + 0.3, k.h); c.drawImage(k.img, 0, k.img.height - 2, k.img.width, 1, x, y + k.h - 0.3, w + 0.3, R.VH + 300);
+      }
+    }
+    return;
+  }
   for (const [par, w, col, lit] of [[0.2, 46, '#0d172b', 'rgba(95,216,255,.10)'], [0.45, 30, '#101c33', 'rgba(176,108,255,.13)']]) {
     const ox = R.cam.x * (1 - par), oy = R.cam.y * (1 - par) * 0.6, gap = w * 3.2, i0 = Math.floor((R.cam.x - ox) / gap) - 1, i1 = i0 + Math.ceil(R.VW / gap) + 2;
     for (let i = i0; i <= i1; i++) {
@@ -252,13 +267,18 @@ function drawBackdrop(c, s) {
     }
   }
 }
+const TILE = { img: null, ok: false };                    // one wall panel (assets/tile.png), drawn once per solid tile
+if (typeof Image !== 'undefined') { TILE.img = new Image(); TILE.img.onload = () => { TILE.ok = true; }; TILE.img.onerror = () => {}; TILE.img.src = 'assets/tile.png'; }
+const GATE = { img: null, ok: false }, SPIKE = { img: null, ok: false };
+if (typeof Image !== 'undefined') for (const [o, src] of [[GATE, 'assets/gate.png'], [SPIKE, 'assets/spikes.png']]) { o.img = new Image(); o.img.onload = () => { o.ok = true; }; o.img.onerror = () => {}; o.img.src = src; }
 function drawTiles(c, s) {
   const L = s.L, i0 = Math.max(0, Math.floor(R.cam.x / T)), i1 = Math.min(L.W - 1, Math.floor((R.cam.x + R.VW) / T)), j0 = Math.max(0, Math.floor(R.cam.y / T)), j1 = Math.min(L.H - 1, Math.floor((R.cam.y + R.VH) / T));
   const at = (i, j) => (i < 0 || i >= L.W) ? 1 : (j < 0 || j >= L.H) ? (j < 0 ? 0 : 1) : L.t[j * L.W + i];
-  c.fillStyle = '#131f33';
-  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (at(i, j) === 1) c.fillRect(i * T, j * T, T + 0.3, T + 0.3);
+  const panel = R.sprite && TILE.ok;
+  c.fillStyle = '#131f33'; if (panel) { c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; }
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (at(i, j) === 1) { if (panel) c.drawImage(TILE.img, i * T, j * T, T + 0.3, T + 0.3); else c.fillRect(i * T, j * T, T + 0.3, T + 0.3); }
   c.fillStyle = 'rgba(150,185,230,.05)';
-  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (at(i, j) === 1) { if ((i + j) % 2 === 0) c.fillRect(i * T + 1, j * T + 1, T - 2, T - 2); }
+  if (!panel) for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if (at(i, j) === 1) { if ((i + j) % 2 === 0) c.fillRect(i * T + 1, j * T + 1, T - 2, T - 2); }
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
     const v = at(i, j);
     if (v === 1) {
@@ -266,6 +286,11 @@ function drawTiles(c, s) {
       if (at(i - 1, j) !== 1) { c.fillStyle = 'rgba(140,190,255,.38)'; c.fillRect(i * T, j * T, 0.7, T); }
       if (at(i + 1, j) !== 1) { c.fillStyle = 'rgba(140,190,255,.38)'; c.fillRect(i * T + T - 0.7, j * T, 0.7, T); }
       if (at(i, j + 1) !== 1) { c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(i * T, j * T + T - 1.5, T, 1.5); }
+    } else if (v === 2 && R.sprite && SPIKE.ok) {
+      for (let k = 0; k < 3; k++) {                                   // the strip holds 6 spikes: 3 per tile. Each one stretches a little from a fixed base, so the tips sway
+        const top = 4.5 + Math.sin(R.t * 0.1 + i + k) * 0.6, sw = 128 / 3;
+        c.drawImage(SPIKE.img, (i & 1) * 128 + k * sw, 0, sw, 88, i * T + k * T / 3, j * T + top, T / 3 + 0.15, T - top);
+      }
     } else if (v === 2) {
       c.fillStyle = COL.danger; c.beginPath();
       for (let k = 0; k < 3; k++) { const x = i * T + k * T / 3; c.moveTo(x, j * T + T); c.lineTo(x + T / 6, j * T + 5 + Math.sin(R.t * 0.1 + i + k) * 0.6); c.lineTo(x + T / 3, j * T + T); }
@@ -284,7 +309,48 @@ function drawSigns(c, s) {
     c.fillStyle = '#dff4ff'; c.fillText(g.text, g.x, y);
   }
 }
+// ---- equipment as sprites (assets/props.png + js/prop_atlas.js); the line drawings remain as the fallback ----
+const PROP = { img: null, ok: false };
+if (typeof PROP_ATLAS !== 'undefined' && typeof Image !== 'undefined') {
+  PROP.img = new Image(); PROP.img.onload = () => { PROP.ok = true; }; PROP.img.src = 'assets/props.png';
+}
+function prop(c, name, x, y) {
+  const f = PROP_ATLAS.frames[name], u = 1 / PROP_ATLAS.ppu; c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(PROP.img, f.x, f.y, f.w, f.h, x - f.ax * u, y - f.ay * u, f.w * u, f.h * u); return f;
+}
+function glowDot(c, x, y, r, color, a) {
+  const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, color + a + ')'); g.addColorStop(1, color + '0)');
+  c.save(); c.globalCompositeOperation = 'lighter'; c.fillStyle = g; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); c.restore();
+}
+function drawMarkersSprite(c, s) {
+  for (const k of s.checks) {
+    const f = prop(c, k.on ? 'check1' : 'check0', k.x, k.y);
+    if (k.on) glowDot(c, k.x + f.lamp[0], k.y + f.lamp[1], 11, 'rgba(159,246,255,', 0.35 + Math.sin(R.t * 0.1) * 0.15);
+  }
+  const g = s.goal, glow = 0.55 + Math.sin(R.t * 0.08) * 0.25, gf = PROP_ATLAS.frames.goal, half = gf.w / PROP_ATLAS.ppu / 2 - 2.6, top = gf.h / PROP_ATLAS.ppu - 4;
+  c.save(); c.globalCompositeOperation = 'lighter';
+  const gr = c.createLinearGradient(0, g.y - top, 0, g.y); gr.addColorStop(0, 'rgba(159,246,255,0)'); gr.addColorStop(1, 'rgba(159,246,255,' + glow * 0.5 + ')');
+  c.fillStyle = gr; c.fillRect(g.x - half, g.y - top, half * 2, top); c.restore();
+  prop(c, 'goal', g.x, g.y);
+}
+function drawThingSprite(c, s, th) {
+  const near = s.near === th, glow = 0.65 + Math.sin(R.t * 0.12 + th.x) * 0.25;
+  if (th.type === 'term') {
+    const f = prop(c, 'term', th.x, th.y), r = f.rect, x = th.x + r[0] + 1.2, y = th.y + r[1] + 1.2, w = r[2] - 2.4, h = r[3] - 2.4;
+    c.save(); c.globalCompositeOperation = 'lighter'; c.fillStyle = COL.glow + (near ? 0.5 : 0.28) * glow + ')'; c.fillRect(x, y, w, h);
+    c.fillStyle = COL.glow + '0.85)'; for (let k = 0; k < 3; k++) c.fillRect(x + 2.2, y + 2.4 + k * (h - 4) / 3, 7 + ((R.t >> 4) + k * 5) % 9, 1.1); c.restore();
+  } else if (th.type === 'switch') {
+    const f = prop(c, th.used ? 'switch1' : 'switch0', th.x, th.y);
+    glowDot(c, th.x + f.lamp[0], th.y + f.lamp[1], 5, th.used ? 'rgba(159,246,255,' : 'rgba(255,184,77,', th.used ? 0.55 : glow * 0.7);
+  } else {
+    const f = PROP_ATLAS.frames[th.used ? 'heal1' : 'heal0'], r = f.rect;
+    if (!th.used) { c.save(); c.globalCompositeOperation = 'lighter'; c.fillStyle = 'rgba(125,255,176,' + 0.2 * glow + ')'; c.fillRect(th.x + r[0], th.y + r[1], r[2], r[3]); c.restore(); }
+    else { c.fillStyle = 'rgba(58,74,102,.28)'; c.fillRect(th.x + r[0], th.y + r[1], r[2], r[3]); }
+    prop(c, th.used ? 'heal1' : 'heal0', th.x, th.y);
+  }
+}
 function drawMarkers(c, s) {
+  if (R.sprite && PROP.ok) return drawMarkersSprite(c, s);
   for (const k of s.checks) {
     const on = k.on, pulse = 0.6 + Math.sin(R.t * 0.1) * 0.4;
     c.fillStyle = '#1b2942'; c.fillRect(k.x - 1.5, k.y - 26, 3, 26);
@@ -304,13 +370,15 @@ function drawThings(c, s) {
     const x = g.col * T, y0 = g.r0 * T, h = (g.r1 - g.r0 + 1) * T, lift = (g.lift || 0), ease = lift * lift * (3 - 2 * lift), shown = h * (1 - ease);
     if (shown > 0.5) {
       c.save(); c.beginPath(); c.rect(x - 2, y0, T + 4, shown); c.clip(); c.translate(0, -h * ease);
+      if (R.sprite && GATE.ok) { c.imageSmoothingEnabled = true; c.drawImage(GATE.img, x + 1, y0, T - 2, h); c.restore(); } else {
       c.fillStyle = '#1d2c47'; c.fillRect(x + 2, y0, T - 4, h); c.fillStyle = 'rgba(255,184,77,.85)';
       for (let k = 0; k < h; k += 12) { c.beginPath(); c.moveTo(x + 2, y0 + k + 8); c.lineTo(x + T - 2, y0 + k + 2); c.lineTo(x + T - 2, y0 + k + 5); c.lineTo(x + 2, y0 + k + 11); c.fill(); }
-      c.strokeStyle = g.open ? COL.blade : COL.foe; c.lineWidth = 0.8; c.strokeRect(x + 2, y0, T - 4, h); c.restore();
+      c.strokeStyle = g.open ? COL.blade : COL.foe; c.lineWidth = 0.8; c.strokeRect(x + 2, y0, T - 4, h); c.restore(); }
     }
     c.fillStyle = g.open ? COL.blade : COL.foe; c.fillRect(x - 1, y0 - 2.5, T + 2, 1.5);
   }
   for (const th of s.things) {
+    if (R.sprite && PROP.ok) { drawThingSprite(c, s, th); continue; }
     const near = s.near === th, glow = 0.65 + Math.sin(R.t * 0.12 + th.x) * 0.25;
     c.save(); c.translate(th.x, th.y);
     if (th.type === 'term') {
@@ -333,8 +401,31 @@ function drawThings(c, s) {
   }
 }
 function hpBar(c, e) { if (e.hp >= e.maxHp || e.hp <= 0) return; const w = Math.max(14, e.hw * 2); c.fillStyle = 'rgba(0,0,0,.6)'; c.fillRect(e.x - w / 2, e.y - e.h - 7, w, 2.2); c.fillStyle = COL.foe; c.fillRect(e.x - w / 2, e.y - e.h - 7, w * e.hp / e.maxHp, 2.2); }
+// ---- enemies as sprites (assets/foes.png + js/foe_atlas.js); the line drawings below remain as the fallback ----
+const FOE = { img: null, ok: false, white: null };
+if (typeof FOE_ATLAS !== 'undefined' && typeof Image !== 'undefined') {
+  FOE.img = new Image(); FOE.img.onload = () => { FOE.ok = true; }; FOE.img.src = 'assets/foes.png';
+}
+function foeWhite() {
+  if (!FOE.white) { const cv = document.createElement('canvas'); cv.width = FOE.img.width; cv.height = FOE.img.height; const x = cv.getContext('2d'); x.drawImage(FOE.img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#ffffff'; x.fillRect(0, 0, cv.width, cv.height); FOE.white = cv; }
+  return FOE.white;
+}
+function foeFrame(e) {
+  if (e.type === 'dummy') return e.flash > 0 || e.stun > 0 ? 'dummy1' : 'dummy0';
+  if (e.type === 'patrol') return 'patrol' + (Math.floor(e.x / 5) & 1);          // steps with distance walked
+  if (e.type === 'heavy') return 'heavy' + (Math.floor(e.x / 6) & 1);
+  return e.cool > 97 ? 'turret1' : 'turret0';                                    // barrel recoils just after a shot
+}
+function drawFoeSprite(c, e, jx) {
+  const f = FOE_ATLAS.frames[foeFrame(e)], u = 1 / FOE_ATLAS.ppu;
+  c.save(); c.translate(e.x + jx, e.y); c.scale(e.type === 'dummy' ? 1 : (e.dir || 1), 1); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high';
+  c.drawImage(e.flash > 4 ? foeWhite() : FOE.img, f.x, f.y, f.w, f.h, -f.ax * u, -f.ay * u, f.w * u, f.h * u);
+  c.restore();
+  if (e.type === 'turret' && e.cool < 26) { c.save(); c.globalCompositeOperation = 'lighter'; c.fillStyle = 'rgba(255,184,77,' + (1 - e.cool / 26) + ')'; c.beginPath(); c.arc(e.x + jx + e.dir * 14, e.y - 14, 2.5 + (1 - e.cool / 26) * 2, 0, TAU); c.fill(); c.restore(); }
+}
 function drawEnemies(c, s) {
   for (const e of s.enemies) {
+    if (!e.dead && R.sprite && FOE.ok) { drawFoeSprite(c, e, e.flash > 0 ? Math.sin(R.t * 2.4) * e.flash * 0.22 : 0); hpBar(c, e); continue; }
     if (e.dead) { if (e.type === 'dummy') { c.fillStyle = '#1b2942'; c.fillRect(e.x - 1.5, e.y - 6, 3, 6); } continue; }
     const fl = e.flash > 4, jx = e.flash > 0 ? Math.sin(R.t * 2.4) * e.flash * 0.22 : 0, body = fl ? '#ffffff' : '#26344f', edge = fl ? '#ffffff' : COL.foe;
     c.save(); c.translate(e.x + jx, e.y);
