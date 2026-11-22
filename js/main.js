@@ -160,8 +160,8 @@ function setMode(m) {
 }
 function fullscreenEl() { return document.fullscreenElement || document.webkitFullscreenElement; }
 function toggleFullscreen() { try { if (fullscreenEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; } const el = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen; if (!fn) return; const r = fn.call(el, { navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (_) {} }
-function restart() { sim = Z.create(); R.reset(sim); clearT = 0; hudCache = ''; }
-function start() { audioStart(); if (isTouch && !fullscreenEl()) toggleFullscreen(); restart(); setMode('play'); }
+function restart() { sim = Z.create(); R.reset(sim); clearT = 0; hudCache = ''; commReset(); }
+function start() { audioStart(); if (isTouch && !fullscreenEl()) toggleFullscreen(); restart(); openScene('intro'); }
 function toggleBoxes() { R.debug = !R.debug; $('boxBtn').textContent = '当たり判定の表示：' + (R.debug ? 'ON' : 'OFF'); }
 $('startBtn').addEventListener('click', start);
 $('pauseBtn').addEventListener('click', () => { if (mode === 'play') setMode('pause'); });
@@ -170,6 +170,9 @@ $('retryBtn').addEventListener('click', () => { restart(); setMode('play'); });
 $('againBtn').addEventListener('click', () => { restart(); setMode('play'); });
 for (const k of ['bgm', 'se']) { const el = $(k + 'Vol'), out = $(k + 'VolV'); el.value = AU.vol[k]; out.textContent = AU.vol[k]; el.addEventListener('input', () => { AU.setVol(k, el.value); out.textContent = el.value; }); }
 $('boxBtn').addEventListener('click', toggleBoxes);
+const storyLabel = () => { $('storyBtn').textContent = '会話：' + (storyOn ? 'ON' : 'OFF'); };
+$('storyBtn').addEventListener('click', () => { storyOn = !storyOn; storyLabel(); if (!storyOn) commReset(); try { localStorage.setItem('zanko.story', storyOn ? '1' : '0'); } catch (_) {} });
+$('talkSkip').addEventListener('click', e => { e.stopPropagation(); talkClose(); });
 $('qualBtn').addEventListener('click', () => setQual((qual + 1) % QUAL.length, false));
 $('gradeBtn').addEventListener('click', () => { R.grade = !R.grade; $('gradeBtn').textContent = '色調整（LUT・トーン）：' + (R.grade ? 'ON' : 'OFF'); });
 $('postBtn').addEventListener('click', () => { R.post = !R.post; $('postBtn').textContent = 'シェーダー効果（歪み・ブレ・色ずれ）：' + (R.post ? 'ON' : 'OFF'); });
@@ -193,15 +196,58 @@ function placePrompt() {
   promptEl.style.left = clamp((th.x - R.cam.x) * R.css, half, band.clientWidth - half) + 'px';
   promptEl.style.top = Math.max(promptEl.offsetHeight + 56, (th.y - 40 - R.cam.y) * R.css) + 'px';
 }
-const talk = { pages: [], i: 0, shown: 0, text: '' };
-function openTalk(th) { talk.pages = th.pages; talk.i = 0; $('talkTitle').textContent = th.title; setMode('talk'); talkPage(); }
-function talkPage() { talk.text = talk.pages[talk.i]; talk.shown = 0; $('talkText').textContent = ''; $('talkMore').textContent = talk.i < talk.pages.length - 1 ? '▼ 次へ' : '■ 閉じる'; $('talkMore').classList.remove('ready'); }
+const talk = { pages: [], i: 0, shown: 0, text: '', scene: false, then: null };
+function openTalk(th) { talk.scene = false; frame.dataset.adv = '0'; talk.pages = th.pages; talk.i = 0; $('talkTitle').textContent = th.title; setMode('talk'); talkPage(); }
+function talkPage() { const pg = talk.pages[talk.i]; talk.text = typeof pg === 'string' ? pg : pg.text; if (talk.scene) scenePage(pg); talk.shown = 0; $('talkText').textContent = ''; $('talkMore').textContent = talk.i < talk.pages.length - 1 ? '▼ 次へ' : '■ 閉じる'; $('talkMore').classList.remove('ready'); }
 function talkNext() {
   if (talk.shown < talk.text.length) { talk.shown = talk.text.length; $('talkText').textContent = talk.text; $('talkMore').classList.add('ready'); return; }   // first press: show the whole page
   if (++talk.i < talk.pages.length) { talkPage(); sfx({ t: 'page' }); } else talkClose();
 }
 let talkClosedAt = 0;
-function talkClose() { talkClosedAt = performance.now(); setMode('play'); }
+function talkClose() { talkClosedAt = performance.now(); const then = talk.scene ? talk.then : null; talk.scene = false; talk.then = null; frame.dataset.adv = '0'; if (then) then(); else setMode('play'); }
+
+// ---- story (js/story.js): scenes stop the game and show portraits; comms run in a corner while the game goes on ----
+const ST = window.ZankoStory, PT = {}, STAND = {};
+let storyOn = !navigator.webdriver;                             // automated browsers (the tests) start with the story off, so that START still leads straight into play
+try { const v = localStorage.getItem('zanko.story'); if (v !== null && !navigator.webdriver) storyOn = v === '1'; } catch (_) {}
+storyLabel();
+function ptLoad(key) { const im = new Image(); im.onload = () => { PT[key] = im.src; }; im.src = 'assets/portrait/' + key + '.png'; }
+for (const k in ST.cast) { ptLoad(ST.cast[k].img); for (const f of ST.faces) ptLoad(ST.cast[k].img + '_' + f); }
+const heroSheet = new Image(); heroSheet.src = 'assets/hero.png';
+function standIn(c) {                                           // no portrait file yet: the hero's own sprite enlarged, or a plain silhouette
+  if (STAND[c.img]) return STAND[c.img];
+  const cv = document.createElement('canvas'); cv.width = 400; cv.height = 600; const x = cv.getContext('2d'), f = c.img === 'hero' && heroSheet.complete && heroSheet.naturalWidth && typeof HERO_ATLAS !== 'undefined' && HERO_ATLAS.frames.idle0;
+  if (f) { const sh = f.h * 0.6, k = 570 / sh; x.imageSmoothingQuality = 'high'; x.drawImage(heroSheet, f.x, f.y, f.w, sh, 200 - f.w * k / 2, 30, f.w * k, 570); }
+  else { x.fillStyle = '#26314f'; x.strokeStyle = c.color || '#bcd7ff'; x.lineWidth = 4; x.beginPath(); x.arc(200, 150, 72, 0, 7); x.fill(); x.stroke(); x.beginPath(); x.moveTo(60, 600); x.quadraticCurveTo(70, 270, 200, 262); x.quadraticCurveTo(330, 270, 340, 600); x.closePath(); x.fill(); x.stroke(); if (c.img === 'hero') return cv.toDataURL(); }
+  return (STAND[c.img] = cv.toDataURL());
+}
+function ptSrc(c, face) { return (face && PT[c.img + '_' + face]) || PT[c.img] || standIn(c); }
+function openScene(id, then) {
+  const pages = storyOn && ST.scenes[id]; if (!pages) { if (then) then(); else setMode('play'); return; }
+  talk.scene = true; talk.then = then || null; talk.pages = pages; talk.i = 0; for (const s of ['L', 'R']) $('adv' + s).className = '';
+  frame.dataset.adv = '1'; setMode('talk'); talkPage();
+}
+function scenePage(pg) {
+  const c = ST.cast[pg.who], el = $('adv' + c.side), other = $('adv' + (c.side === 'L' ? 'R' : 'L'));
+  $('talkTitle').textContent = c.name; el.src = ptSrc(c, pg.face); el.className = 'in on' + (c.flip ? ' flip' : ''); other.classList.remove('on');
+}
+function commFace(c, face) {                                   // show the face part of the portrait in the small square
+  $('comm').style.setProperty('--cc', c.color || '#bcd7ff'); const el = $('commFace'), src = ptSrc(c, face), real = !!PT[c.img], b = real && c.faceBox; el.style.backgroundImage = 'url(' + src + ')';
+  if (!b) { el.style.backgroundSize = ''; el.style.backgroundPosition = ''; return; }
+  const im = new Image(); im.src = src; const asp = (im.naturalHeight || 1100) / (im.naturalWidth || 564), fw = b[2], fh = fw / asp;
+  el.style.backgroundSize = (100 / fw) + '% auto'; el.style.backgroundPosition = ((b[0] - fw / 2) / (1 - fw) * 100) + '% ' + ((b[1] - fh / 2) / (1 - fh) * 100) + '%';
+}
+// comms: a queue of lines; each types out, stays a moment, then makes room for the next
+const comm = { q: [], cur: null, shown: 0, hold: 0 };
+function commReset() { comm.q.length = 0; comm.cur = null; $('comm').classList.remove('show'); for (const c of ST.comms) c.done = false; }
+function commTick() {
+  if (!storyOn) return;
+  for (const c of ST.comms) if (!c.done && sim.p.x >= c.col * 16) { c.done = true; for (const text of c.lines) comm.q.push({ who: c.who, face: c.face, text }); }
+  if (!comm.cur) { if (!comm.q.length) return; const n = comm.cur = comm.q.shift(), c = ST.cast[n.who]; comm.shown = 0; comm.hold = 0; $('commName').textContent = c.name; $('commText').textContent = ''; commFace(c, n.face); const box = $('comm'); box.classList.add('show'); box.classList.remove('pop'); void box.offsetWidth; box.classList.add('pop'); sfx({ t: 'comm' }); }
+  const n = comm.cur;
+  if (comm.shown < n.text.length) { comm.shown = Math.min(n.text.length, comm.shown + 1); $('commText').textContent = n.text.slice(0, Math.floor(comm.shown)); }
+  else if (++comm.hold > 150 + n.text.length * 7) { comm.cur = null; if (!comm.q.length) $('comm').classList.remove('show'); }
+}
 function talkTick() { if (talk.shown < talk.text.length) { talk.shown = Math.min(talk.text.length, talk.shown + 1); $('talkText').textContent = talk.text.slice(0, talk.shown); if (talk.shown === talk.text.length) $('talkMore').classList.add('ready'); else if (talk.shown % 3 === 0) sfx({ t: 'type' }); } }
 
 // ---- gamepad outside play: any face button turns the page, Options pauses and resumes ----
@@ -238,7 +284,8 @@ function stepOnce() {
   sim.events.length = 0;
   R.step(sim);
   if (opened) openTalk(opened);
-  if (sim.cleared && ++clearT === 70) { $('resTime').textContent = fmt(sim.time); $('resMiss').textContent = sim.deaths; setMode('clear'); }
+  if (sim.cleared && ++clearT === 70) { $('resTime').textContent = fmt(sim.time); $('resMiss').textContent = sim.deaths; comm.q.length = 0; comm.cur = null; $('comm').classList.remove('show'); openScene('outro', () => setMode('clear')); }
+  commTick();
 }
 function tick(ts) {
   requestAnimationFrame(tick);
@@ -255,5 +302,5 @@ function tick(ts) {
 document.body.classList.toggle('touch', isTouch);
 if (location.hash === '#debug') $('debug').hidden = false;
 layout(); R.reset(sim); R.step(sim); requestAnimationFrame(tick);
-window.__zanko = { get sim() { return sim; }, R, setMode, start, input: () => ({ stick: stick.id, axis: stick.axis, pointers: [...pointers.values()], held: Object.keys(held).filter(k => held[k]), mouse: Object.keys(mouse).filter(k => mouse[k]), dashLatch, tapDash: !!tapDash, on: buttons.filter(b => b.el.classList.contains('on')).map(b => b.act) }) };     // for automated checks
+window.__zanko = { story: v => { storyOn = !!v; storyLabel(); }, openScene, get comm() { return comm; }, get sim() { return sim; }, R, setMode, start, input: () => ({ stick: stick.id, axis: stick.axis, pointers: [...pointers.values()], held: Object.keys(held).filter(k => held[k]), mouse: Object.keys(mouse).filter(k => mouse[k]), dashLatch, tapDash: !!tapDash, on: buttons.filter(b => b.el.classList.contains('on')).map(b => b.act) }) };     // for automated checks
 })();

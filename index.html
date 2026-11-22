@@ -12,7 +12,8 @@
 <main class="frame" id="frame" data-mode="title">
  <div class="band" id="band">
   <canvas id="game" width="960" height="540" aria-label="横スクロールの剣戟アクション"></canvas>
-  <div class="hud" id="hud"><div class="note" id="note"></div>
+  <div class="adv" id="adv"><img id="advL" alt=""><img id="advR" alt=""></div>
+  <div class="hud" id="hud"><div class="note" id="note"></div><div class="comm" id="comm"><i id="commFace"></i><div><b id="commName"></b><p id="commText"></p></div></div>
    <div class="life"><span class="tag">LIFE</span><div class="cells" id="cells"></div></div>
    <div class="hud-right">
     <div class="timer"><span class="tag">TIME</span><b id="time">0:00.0</b><span class="tag miss">MISS <i id="deaths">0</i></span></div>
@@ -23,7 +24,7 @@
   <div class="debug" id="debug" hidden></div>
  </div>
 
- <div class="talk" id="talk"><div class="talk-title" id="talkTitle"></div><p id="talkText"></p><div class="talk-more" id="talkMore">▼ 次へ</div></div>
+ <div class="talk" id="talk"><div class="talk-title" id="talkTitle"></div><p id="talkText"></p><button class="talk-skip" id="talkSkip" type="button">SKIP</button><div class="talk-more" id="talkMore">▼ 次へ</div></div>
 
  <div class="touch-ui" id="touchUI" aria-hidden="true">
   <div class="stick" id="stick"><i class="chev l"></i><i class="chev r"></i><div class="stick-knob" id="stickKnob"></div></div>
@@ -34,7 +35,7 @@
 
  <div class="overlay show" id="title">
   <div class="panel wide">
-   <div class="micro">ACTION PROTOTYPE / 仮題 / v0.5.2</div>
+   <div class="micro">ACTION PROTOTYPE / 仮題 / v0.6.0</div>
    <h1>残光 <small>ZANKO</small></h1>
    <p class="lead">ダッシュ、壁蹴り、三段斬り。操作の手触りを確かめるための練習ステージ。</p>
    <p class="inapp" id="inapp" hidden>アプリ内ブラウザでは動作が重くなることがあります。Chrome や Safari で開くと軽くなります。</p>
@@ -51,7 +52,7 @@
  </div>
  <div class="overlay" id="pause">
   <div class="panel"><div class="micro">PAUSE</div><h2>中断中</h2>
-   <div class="actions col"><button class="primary" id="resumeBtn" type="button">つづける</button><button class="secondary" id="retryBtn" type="button">最初からやり直す</button><label class="vol"><span>BGM</span><input type="range" id="bgmVol" min="0" max="100" step="5" value="50"><b id="bgmVolV">50</b></label><label class="vol"><span>効果音</span><input type="range" id="seVol" min="0" max="100" step="5" value="60"><b id="seVolV">60</b></label><button class="secondary" id="airBtn" type="button">エアダッシュ（試験）：ON</button><button class="secondary" id="carryBtn" type="button">壁蹴りのダッシュ維持：ON</button><button class="secondary" id="spriteBtn" type="button">絵の表示：ON</button><button class="secondary" id="fxBtn" type="button">空気感：ON</button><button class="secondary" id="postBtn" type="button">シェーダー効果（歪み・ブレ・色ずれ）：ON</button><button class="secondary" id="gradeBtn" type="button">色調整（LUT・トーン）：ON</button><button class="secondary" id="qualBtn" type="button">描画の解像度：標準</button><button class="secondary" id="boxBtn" type="button">当たり判定の表示：OFF</button><button class="secondary" id="fsBtn" type="button" hidden>全画面の切り替え</button></div>
+   <div class="actions col"><button class="primary" id="resumeBtn" type="button">つづける</button><button class="secondary" id="retryBtn" type="button">最初からやり直す</button><label class="vol"><span>BGM</span><input type="range" id="bgmVol" min="0" max="100" step="5" value="50"><b id="bgmVolV">50</b></label><label class="vol"><span>効果音</span><input type="range" id="seVol" min="0" max="100" step="5" value="60"><b id="seVolV">60</b></label><button class="secondary" id="airBtn" type="button">エアダッシュ（試験）：ON</button><button class="secondary" id="carryBtn" type="button">壁蹴りのダッシュ維持：ON</button><button class="secondary" id="spriteBtn" type="button">絵の表示：ON</button><button class="secondary" id="fxBtn" type="button">空気感：ON</button><button class="secondary" id="postBtn" type="button">シェーダー効果（歪み・ブレ・色ずれ）：ON</button><button class="secondary" id="gradeBtn" type="button">色調整（LUT・トーン）：ON</button><button class="secondary" id="storyBtn" type="button">会話：ON</button><button class="secondary" id="qualBtn" type="button">描画の解像度：標準</button><button class="secondary" id="boxBtn" type="button">当たり判定の表示：OFF</button><button class="secondary" id="fsBtn" type="button" hidden>全画面の切り替え</button></div>
   </div>
  </div>
  <div class="overlay" id="clear">
@@ -65,6 +66,7 @@
 <script src="js/hero_atlas.js"></script>
 <script src="js/foe_atlas.js"></script>
 <script src="js/prop_atlas.js"></script>
+<script src="js/story.js"></script>
 <script src="js/render.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/main.js"></script>

@@ -78,6 +78,7 @@ function sfx(g, e, t) {
     case 'charged': O('sine', 880, 1320, 0.14, 0.2); O('sine', 1320, 1980, 0.16, 0.13, 0.05); O('sine', 2640, 2640, 0.22, 0.06, 0.1, 0.004, true); N('highpass', 6000, 6000, 0.1, 0.05, 0.7, 0.05); break;
     case 'check': O('sine', 784, 784, 0.16, 0.17, 0, 0.004, true); O('sine', 1175, 1175, 0.3, 0.17, 0.11, 0.004, true); break;
     case 'shot': O('square', 950, 230, 0.12, 0.085); N('bandpass', 3200, 1100, 0.05, 0.1, 1.2); O('sine', 1900, 500, 0.08, 0.05); break;
+    case 'comm': O('sine', 1320, 1320, 0.07, 0.16); O('sine', 1760, 1760, 0.12, 0.16, 0.08, 0.004, true); N('highpass', 6000, 6000, 0.03, 0.05, 0.7); break;   // incoming line: two rising notes
     case 'talk': O('sine', 880, 1100, 0.07, 0.15); break;
     case 'type': O('square', 1500, 1500, 0.014, 0.03); break;
     case 'page': O('sine', 700, 700, 0.05, 0.11); break;

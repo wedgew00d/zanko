@@ -100,3 +100,23 @@ kbd{font:700 10px ui-monospace,Menlo,monospace;background:rgba(150,200,240,.14);
 .inapp{margin:-6px 0 16px;padding:10px 12px;font-size:12px;line-height:1.7;color:#ffd9a0;border:1px solid rgba(255,184,77,.5);background:rgba(60,40,10,.45)}.inapp[hidden]{display:none}
 .inapp a{display:inline-block;margin-left:10px;color:var(--cy);text-decoration:underline}
 .note{position:absolute;left:50%;bottom:14%;transform:translateX(-50%);max-width:86%;padding:8px 14px;font-size:12px;line-height:1.6;color:#dff6ff;background:rgba(8,16,30,.88);border:1px solid rgba(127,227,255,.4);opacity:0;transition:opacity .3s;pointer-events:none}.note.show{opacity:1}
+/* story: scene (portraits over a dimmed, blurred game) and comm window */
+.band canvas{transition:filter .25s}
+.frame[data-adv="1"] .band canvas{filter:blur(5px) brightness(.5) saturate(.8)}
+.frame[data-adv="1"] .hud{opacity:0}
+.adv{position:absolute;inset:0;z-index:3;pointer-events:none;opacity:0;transition:opacity .2s}
+.frame[data-adv="1"] .adv{opacity:1}
+.adv img{position:absolute;bottom:0;height:97%;max-width:48%;object-fit:contain;object-position:bottom;display:none;filter:brightness(.42) saturate(.7);transform-origin:50% 100%;transition:filter .2s,transform .2s}
+.adv img.in{display:block}.adv img.on{filter:drop-shadow(0 0 1.5px rgba(190,225,255,.85)) drop-shadow(0 0 16px rgba(127,227,255,.28))}
+#advL{left:4%}#advR{right:4%}
+#advL.on{transform:scale(1.03)}#advR.on{transform:scale(1.03)}#advR.flip{transform:scaleX(-1)}#advR.flip.on{transform:scale(-1.03,1.03)}#advL.flip{transform:scaleX(-1)}#advL.flip.on{transform:scale(-1.03,1.03)}
+.talk-skip{display:none;position:absolute;right:12px;top:8px;min-height:0;padding:4px 10px;font:700 10px ui-monospace,Menlo,monospace;letter-spacing:2px;color:var(--dim);background:transparent;border:1px solid rgba(127,160,200,.35)}
+.frame[data-adv="1"] .talk-skip{display:block}
+.comm{position:absolute;left:calc(14px + var(--sal));top:62px;display:flex;gap:12px;align-items:center;max-width:min(470px,58%);padding:9px 16px 9px 9px;background:rgba(8,16,30,.9);border:1px solid rgba(127,160,200,.45);border-left:4px solid var(--cc,#bcd7ff);opacity:0;transform:translateX(-14px);transition:opacity .2s,transform .2s;pointer-events:none}
+.comm.show{opacity:1;transform:none}
+.comm.pop{animation:commPop .7s ease-out}                     /* each new line: a bright flash that settles, so the eye catches it while playing */
+@keyframes commPop{0%{background:rgba(190,235,255,.55);box-shadow:0 0 0 2px var(--cc,#bcd7ff),0 0 26px 6px rgba(127,227,255,.75);transform:scale(1.06)}35%{background:rgba(40,80,120,.9);box-shadow:0 0 0 1px var(--cc,#bcd7ff),0 0 16px 2px rgba(127,227,255,.45);transform:scale(1)}100%{background:rgba(8,16,30,.9);box-shadow:0 0 0 0 transparent,0 0 0 0 transparent}}
+.comm i{flex:none;width:64px;height:64px;background-color:#16203a;background-size:330% auto;background-position:50% 5%;background-repeat:no-repeat;border:1px solid var(--cc,#bcd7ff)}
+.comm b{display:block;font:700 10px ui-monospace,Menlo,monospace;letter-spacing:2px;color:var(--cc,#bcd7ff)}
+.comm p{margin:4px 0 0;font-size:16px;line-height:1.5;color:#f2f8ff;min-height:1.5em;text-shadow:0 1px 2px #000}
+@media (max-height:460px){.comm{top:46px}.comm i{width:52px;height:52px}.comm p{font-size:15px}}
